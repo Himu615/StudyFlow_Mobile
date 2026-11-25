@@ -16,15 +16,17 @@ Notifications.setNotificationHandler({
 async function scheduleTaskNotification(task) {
   if (!task?.dueDate) return;
   const dueDate = new Date(task.dueDate);
-  if (Number.isNaN(dueDate.getTime()) || dueDate.getTime() <= Date.now()) return;
+  const reminderMinutes = Number(task.reminderMinutesBefore || 0);
+  const notificationDate = new Date(dueDate.getTime() - reminderMinutes * 60 * 1000);
+  if (Number.isNaN(dueDate.getTime()) || notificationDate.getTime() <= Date.now()) return;
   const permissions = await Notifications.getPermissionsAsync();
   if (!permissions.granted) {
     const requested = await Notifications.requestPermissionsAsync();
     if (!requested.granted) return;
   }
   await Notifications.scheduleNotificationAsync({
-    content: { title: "StudyFlow task due", body: task.title, data: { taskId: task._id } },
-    trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: dueDate },
+    content: { title: reminderMinutes ? "StudyFlow task reminder" : "StudyFlow task due", body: task.title, data: { taskId: task._id } },
+    trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: notificationDate },
   });
 }
 
