@@ -82,6 +82,71 @@ function TaskForm({ task, token, onCancel, onSaved }) {
   </View>;
 }
 
+function StudyStructure({ token }) {
+  const [subjects, setSubjects] = useState([]);
+  const [goals, setGoals] = useState([]);
+  const [subjectName, setSubjectName] = useState("");
+  const [goalTitle, setGoalTitle] = useState("");
+  const [showSubjectForm, setShowSubjectForm] = useState(false);
+  const [showGoalForm, setShowGoalForm] = useState(false);
+  const [error, setError] = useState("");
+
+  async function loadStructure() {
+    try {
+      const [subjectData, goalData] = await Promise.all([apiRequest("/subjects", {}, token), apiRequest("/goals", {}, token)]);
+      setSubjects(subjectData.subjects || []);
+      setGoals(goalData.goals || []);
+    } catch (requestError) {
+      setError(requestError.message);
+    }
+  }
+
+  useEffect(() => { loadStructure(); }, []);
+
+  async function addSubject() {
+    if (!subjectName.trim()) return;
+    try {
+      const data = await apiRequest("/subjects", { method: "POST", body: JSON.stringify({ name: subjectName.trim(), color: "#11806b" }) }, token);
+      setSubjects((current) => [...current, data.subject]);
+      setSubjectName("");
+      setShowSubjectForm(false);
+    } catch (requestError) { setError(requestError.message); }
+  }
+
+  async function addGoal() {
+    if (!goalTitle.trim()) return;
+    try {
+      const data = await apiRequest("/goals", { method: "POST", body: JSON.stringify({ title: goalTitle.trim() }) }, token);
+      setGoals((current) => [data.goal, ...current]);
+      setGoalTitle("");
+      setShowGoalForm(false);
+    } catch (requestError) { setError(requestError.message); }
+  }
+
+  function removeItem(type, item) {
+    Alert.alert(`Delete ${type}`, `Delete \"${type === "subject" ? item.name : item.title}\"?`, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Delete", style: "destructive", onPress: async () => {
+        try {
+          await apiRequest(`/${type === "subject" ? "subjects" : "goals"}/${item._id}`, { method: "DELETE" }, token);
+          if (type === "subject") setSubjects((current) => current.filter((entry) => entry._id !== item._id));
+          else setGoals((current) => current.filter((entry) => entry._id !== item._id));
+        } catch (requestError) { setError(requestError.message); }
+      } },
+    ]);
+  }
+
+  return <View style={styles.structureBlock}>
+    <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Subjects</Text><Pressable onPress={() => setShowSubjectForm((value) => !value)}><Text style={styles.refreshText}>+ Add</Text></Pressable></View>
+    {showSubjectForm ? <View style={styles.inlineForm}><TextInput onChangeText={setSubjectName} placeholder="Subject name" placeholderTextColor="#91a09a" style={styles.input} value={subjectName} /><Button title="Save subject" onPress={addSubject} /></View> : null}
+    {subjects.length === 0 ? <Text style={styles.mutedText}>No subjects yet.</Text> : subjects.map((subject) => <View key={subject._id} style={styles.structureRow}><View style={[styles.colorDot, { backgroundColor: subject.color || "#11806b" }]} /><Text style={styles.structureName}>{subject.name}</Text><Pressable onPress={() => removeItem("subject", subject)}><Text style={styles.deleteText}>Delete</Text></Pressable></View>)}
+    <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Goals</Text><Pressable onPress={() => setShowGoalForm((value) => !value)}><Text style={styles.refreshText}>+ Add</Text></Pressable></View>
+    {showGoalForm ? <View style={styles.inlineForm}><TextInput onChangeText={setGoalTitle} placeholder="Goal title" placeholderTextColor="#91a09a" style={styles.input} value={goalTitle} /><Button title="Save goal" onPress={addGoal} /></View> : null}
+    {goals.length === 0 ? <Text style={styles.mutedText}>No goals yet.</Text> : goals.map((goal) => <View key={goal._id} style={styles.structureRow}><View style={styles.goalDot}><Text style={styles.goalDotText}>◎</Text></View><View style={styles.goalCopy}><Text style={styles.structureName}>{goal.title}</Text><Text style={styles.taskMeta}>{Number(goal.progress) || 0}% complete</Text></View><Pressable onPress={() => removeItem("goal", goal)}><Text style={styles.deleteText}>Delete</Text></Pressable></View>)}
+    {error ? <Text style={styles.error}>{error}</Text> : null}
+  </View>;
+}
+
 function AuthScreen({ mode, setMode, onAuthenticated }) {
   const isSignup = mode === "signup";
   const [name, setName] = useState("");
@@ -193,6 +258,7 @@ function HomeScreen({ auth, onLogout }) {
       {loadingTasks ? <View style={styles.taskLoading}><ActivityIndicator color="#11806b" /><Text style={styles.loadingText}>Loading tasks...</Text></View> : null}
       {!loadingTasks && tasks.length === 0 ? <View style={styles.emptyCard}><Text style={styles.emptyTitle}>No tasks yet</Text><Text style={styles.emptyText}>Your tasks will appear here once you create them.</Text></View> : null}
       {tasks.map((task) => <View key={task._id} style={styles.taskCard}><Pressable onPress={() => toggleTask(task)} style={styles.taskMain}><View style={[styles.checkbox, task.completed && styles.checkboxDone]}>{task.completed ? <Text style={styles.checkmark}>✓</Text> : null}</View><View style={styles.taskCopy}><Text style={[styles.taskTitle, task.completed && styles.taskCompleted]}>{task.title}</Text><Text style={styles.taskMeta}>{task.priority || "medium"}{task.estimatedMinutes ? ` • ${task.estimatedMinutes} min` : ""}{task.dueDate ? ` • Due ${new Date(task.dueDate).toLocaleString()}` : ""}</Text></View></Pressable><View style={styles.taskActions}><Pressable onPress={() => { setEditingTask(task); setShowForm(true); }}><Text style={styles.editText}>Edit</Text></Pressable><Pressable onPress={() => deleteTask(task)}><Text style={styles.deleteText}>Delete</Text></Pressable></View></View>)}
+      <StudyStructure token={auth.token} />
     </ScrollView>
   </SafeAreaView>;
 }
@@ -234,5 +300,5 @@ const styles = StyleSheet.create({
   flex: { flex: 1 }, loading: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#f5f6f1" }, loadingText: { marginTop: 12, color: "#5e716a" },
   authContainer: { flexGrow: 1, justifyContent: "center", padding: 24, backgroundColor: "#102f2a" }, brandMark: { alignSelf: "center", alignItems: "center", justifyContent: "center", width: 58, height: 58, borderRadius: 16, backgroundColor: "#11806b" }, brandMarkText: { color: "#fff", fontSize: 34, fontWeight: "800" }, brand: { marginTop: 12, textAlign: "center", color: "#fff", fontSize: 30, fontWeight: "800" }, subtitle: { marginTop: 6, marginBottom: 26, textAlign: "center", color: "#c9d8d2", fontSize: 15 },
   card: { borderRadius: 20, padding: 22, backgroundColor: "#fff" }, heading: { color: "#17362f", fontSize: 24, fontWeight: "800" }, cardSubtitle: { marginTop: 6, marginBottom: 20, color: "#718078" }, fieldGroup: { marginBottom: 15 }, label: { marginBottom: 7, color: "#304d44", fontSize: 13, fontWeight: "700" }, input: { borderWidth: 1, borderColor: "#dfe3dc", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 13, color: "#17362f", fontSize: 16 }, button: { alignItems: "center", borderRadius: 12, paddingVertical: 14, backgroundColor: "#11806b" }, buttonText: { color: "#fff", fontSize: 16, fontWeight: "800" }, disabledButton: { opacity: 0.6 }, pressedButton: { opacity: 0.8 }, error: { marginBottom: 12, color: "#b42318", lineHeight: 20 }, switchButton: { alignItems: "center", marginTop: 18 }, switchText: { color: "#11806b", fontWeight: "700" }, apiHint: { marginTop: 18, textAlign: "center", color: "#a9bbb3", fontSize: 11 },
-  screen: { flex: 1, backgroundColor: "#f5f6f1" }, homeHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 22, paddingTop: 24, paddingBottom: 18, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#dfe3dc" }, smallEyebrow: { color: "#11806b", fontSize: 11, fontWeight: "800", letterSpacing: 1.4 }, homeTitle: { marginTop: 3, color: "#17362f", fontSize: 28, fontWeight: "800" }, logoutButton: { borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, backgroundColor: "#eef8f3" }, logoutText: { color: "#11806b", fontWeight: "700" }, homeContent: { padding: 22, paddingBottom: 36 }, greeting: { color: "#17362f", fontSize: 24, fontWeight: "800" }, homeSubtitle: { marginTop: 8, color: "#6d7c76", fontSize: 15 }, sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 28, marginBottom: 12 }, sectionTitle: { color: "#17362f", fontSize: 19, fontWeight: "800" }, sectionActions: { flexDirection: "row", alignItems: "center", gap: 16 }, refreshText: { color: "#11806b", fontWeight: "700" }, addButton: { borderRadius: 9, paddingHorizontal: 11, paddingVertical: 8, backgroundColor: "#11806b" }, addButtonText: { color: "#fff", fontWeight: "800" }, taskLoading: { alignItems: "center", padding: 24 }, taskCard: { flexDirection: "row", alignItems: "center", marginBottom: 10, borderRadius: 16, padding: 15, backgroundColor: "#fff", borderWidth: 1, borderColor: "#dfe3dc" }, taskMain: { flex: 1, flexDirection: "row", alignItems: "center" }, checkbox: { alignItems: "center", justifyContent: "center", width: 27, height: 27, marginRight: 12, borderRadius: 8, borderWidth: 1.5, borderColor: "#b9c8c0" }, checkboxDone: { borderColor: "#11806b", backgroundColor: "#11806b" }, checkmark: { color: "#fff", fontSize: 18, fontWeight: "800" }, taskCopy: { flex: 1 }, taskTitle: { color: "#17362f", fontSize: 15, fontWeight: "700" }, taskCompleted: { color: "#8a9992", textDecorationLine: "line-through" }, taskMeta: { marginTop: 5, color: "#7b8a83", fontSize: 12 }, taskActions: { flexDirection: "row", gap: 12, marginLeft: 8 }, editText: { color: "#11806b", fontSize: 12, fontWeight: "800" }, deleteText: { color: "#b42318", fontSize: 12, fontWeight: "800" }, emptyCard: { marginTop: 8, borderRadius: 18, padding: 20, backgroundColor: "#fff", borderWidth: 1, borderColor: "#dfe3dc" }, emptyTitle: { color: "#17362f", fontSize: 18, fontWeight: "800" }, emptyText: { marginTop: 8, color: "#6d7c76", lineHeight: 21 }, formCard: { marginBottom: 18, borderRadius: 18, padding: 18, backgroundColor: "#fff", borderWidth: 1, borderColor: "#dfe3dc" }, formHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }, formTitle: { color: "#17362f", fontSize: 20, fontWeight: "800" }, closeText: { color: "#6d7c76", fontWeight: "700" }, priorityRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 15 }, priorityButton: { flex: 1, alignItems: "center", borderRadius: 10, paddingVertical: 10, backgroundColor: "#f1f4f1" }, reminderButton: { minWidth: 62, alignItems: "center", borderRadius: 10, paddingVertical: 10, paddingHorizontal: 8, backgroundColor: "#f1f4f1" }, priorityButtonActive: { backgroundColor: "#dff2e9" }, priorityText: { color: "#62736b", fontWeight: "700", textTransform: "capitalize" }, priorityTextActive: { color: "#11806b" },
+  screen: { flex: 1, backgroundColor: "#f5f6f1" }, homeHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 22, paddingTop: 24, paddingBottom: 18, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#dfe3dc" }, smallEyebrow: { color: "#11806b", fontSize: 11, fontWeight: "800", letterSpacing: 1.4 }, homeTitle: { marginTop: 3, color: "#17362f", fontSize: 28, fontWeight: "800" }, logoutButton: { borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, backgroundColor: "#eef8f3" }, logoutText: { color: "#11806b", fontWeight: "700" }, homeContent: { padding: 22, paddingBottom: 36 }, greeting: { color: "#17362f", fontSize: 24, fontWeight: "800" }, homeSubtitle: { marginTop: 8, color: "#6d7c76", fontSize: 15 }, sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 28, marginBottom: 12 }, sectionTitle: { color: "#17362f", fontSize: 19, fontWeight: "800" }, sectionActions: { flexDirection: "row", alignItems: "center", gap: 16 }, refreshText: { color: "#11806b", fontWeight: "700" }, addButton: { borderRadius: 9, paddingHorizontal: 11, paddingVertical: 8, backgroundColor: "#11806b" }, addButtonText: { color: "#fff", fontWeight: "800" }, taskLoading: { alignItems: "center", padding: 24 }, taskCard: { flexDirection: "row", alignItems: "center", marginBottom: 10, borderRadius: 16, padding: 15, backgroundColor: "#fff", borderWidth: 1, borderColor: "#dfe3dc" }, taskMain: { flex: 1, flexDirection: "row", alignItems: "center" }, checkbox: { alignItems: "center", justifyContent: "center", width: 27, height: 27, marginRight: 12, borderRadius: 8, borderWidth: 1.5, borderColor: "#b9c8c0" }, checkboxDone: { borderColor: "#11806b", backgroundColor: "#11806b" }, checkmark: { color: "#fff", fontSize: 18, fontWeight: "800" }, taskCopy: { flex: 1 }, taskTitle: { color: "#17362f", fontSize: 15, fontWeight: "700" }, taskCompleted: { color: "#8a9992", textDecorationLine: "line-through" }, taskMeta: { marginTop: 5, color: "#7b8a83", fontSize: 12 }, taskActions: { flexDirection: "row", gap: 12, marginLeft: 8 }, editText: { color: "#11806b", fontSize: 12, fontWeight: "800" }, deleteText: { color: "#b42318", fontSize: 12, fontWeight: "800" }, emptyCard: { marginTop: 8, borderRadius: 18, padding: 20, backgroundColor: "#fff", borderWidth: 1, borderColor: "#dfe3dc" }, emptyTitle: { color: "#17362f", fontSize: 18, fontWeight: "800" }, emptyText: { marginTop: 8, color: "#6d7c76", lineHeight: 21 }, formCard: { marginBottom: 18, borderRadius: 18, padding: 18, backgroundColor: "#fff", borderWidth: 1, borderColor: "#dfe3dc" }, formHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }, formTitle: { color: "#17362f", fontSize: 20, fontWeight: "800" }, closeText: { color: "#6d7c76", fontWeight: "700" }, priorityRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 15 }, priorityButton: { flex: 1, alignItems: "center", borderRadius: 10, paddingVertical: 10, backgroundColor: "#f1f4f1" }, reminderButton: { minWidth: 62, alignItems: "center", borderRadius: 10, paddingVertical: 10, paddingHorizontal: 8, backgroundColor: "#f1f4f1" }, priorityButtonActive: { backgroundColor: "#dff2e9" }, priorityText: { color: "#62736b", fontWeight: "700", textTransform: "capitalize" }, priorityTextActive: { color: "#11806b" }, structureBlock: { marginTop: 8, borderRadius: 18, padding: 18, backgroundColor: "#fff", borderWidth: 1, borderColor: "#dfe3dc" }, inlineForm: { gap: 10, marginBottom: 12 }, structureRow: { flexDirection: "row", alignItems: "center", paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: "#eef1ed" }, structureName: { flex: 1, color: "#17362f", fontWeight: "700" }, mutedText: { color: "#7b8a83", fontSize: 13 }, colorDot: { width: 10, height: 10, marginRight: 10, borderRadius: 5 }, goalDot: { width: 25, marginRight: 4 }, goalDotText: { color: "#11806b", fontSize: 20 }, goalCopy: { flex: 1 },
 });
