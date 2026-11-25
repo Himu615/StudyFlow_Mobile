@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, AppState, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { StatusBar } from "expo-status-bar";
 import * as Notifications from "expo-notifications";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { apiRequest, getApiBaseUrl } from "./src/api";
+import { enqueueSync, loadTaskCache, readSyncQueue, saveTaskCache, writeSyncQueue } from "./src/offline";
 
 const TOKEN_KEY = "studyflow_token";
 const USER_KEY = "studyflow_user";
@@ -240,14 +241,37 @@ function HomeScreen({ auth, onLogout }) {
     try {
       const data = await apiRequest("/tasks", {}, auth.token);
       setTasks(data.tasks || []);
+      await saveTaskCache(auth.user?.id || auth.user?._id, data.tasks || []);
+      await flushSyncQueue();
     } catch (requestError) {
-      setError(requestError.message);
+      const cached = await loadTaskCache(auth.user?.id || auth.user?._id);
+      setTasks(cached);
+      setError(cached.length ? "Offline mode: showing saved tasks." : requestError.message);
     } finally {
       setLoadingTasks(false);
     }
   }
 
+  async function flushSyncQueue() {
+    const userId = auth.user?.id || auth.user?._id;
+    const queue = await readSyncQueue(userId);
+    if (!queue.length) return;
+    const remaining = [];
+    for (const operation of queue) {
+      try {
+        if (operation.type === "updateTask") await apiRequest(`/tasks/${operation.id}`, { method: "PATCH", body: JSON.stringify(operation.patch) }, auth.token);
+        if (operation.type === "deleteTask") await apiRequest(`/tasks/${operation.id}`, { method: "DELETE" }, auth.token);
+      } catch { remaining.push(operation); }
+    }
+    await writeSyncQueue(userId, remaining);
+  }
+
   useEffect(() => { loadTasks(); }, []);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => { if (state === "active") loadTasks(); });
+    return () => subscription.remove();
+  }, []);
 
   async function toggleTask(task) {
     const nextCompleted = !task.completed;
@@ -256,8 +280,9 @@ function HomeScreen({ auth, onLogout }) {
       const data = await apiRequest(`/tasks/${task._id}`, { method: "PATCH", body: JSON.stringify({ completed: nextCompleted }) }, auth.token);
       setTasks((current) => current.map((item) => item._id === task._id ? data.task : item));
     } catch (requestError) {
-      setTasks((current) => current.map((item) => item._id === task._id ? task : item));
-      setError(requestError.message);
+      await enqueueSync(auth.user?.id || auth.user?._id, { type: "updateTask", id: task._id, patch: { completed: nextCompleted } });
+      await saveTaskCache(auth.user?.id || auth.user?._id, tasks.map((item) => item._id === task._id ? { ...item, completed: nextCompleted } : item));
+      setError("Offline: task change saved and will sync when you reconnect.");
     }
   }
 
@@ -266,6 +291,7 @@ function HomeScreen({ auth, onLogout }) {
       const exists = current.some((item) => item._id === savedTask._id);
       return exists ? current.map((item) => item._id === savedTask._id ? savedTask : item) : [savedTask, ...current];
     });
+    saveTaskCache(auth.user?.id || auth.user?._id, tasks.some((item) => item._id === savedTask._id) ? tasks.map((item) => item._id === savedTask._id ? savedTask : item) : [savedTask, ...tasks]).catch(() => {});
     setShowForm(false);
     setEditingTask(null);
     scheduleTaskNotification(savedTask).catch(() => {});
@@ -278,8 +304,11 @@ function HomeScreen({ auth, onLogout }) {
         try {
           await apiRequest(`/tasks/${task._id}`, { method: "DELETE" }, auth.token);
           setTasks((current) => current.filter((item) => item._id !== task._id));
+          await saveTaskCache(auth.user?.id || auth.user?._id, tasks.filter((item) => item._id !== task._id));
         } catch (requestError) {
-          setError(requestError.message);
+          await enqueueSync(auth.user?.id || auth.user?._id, { type: "deleteTask", id: task._id });
+          setTasks((current) => current.filter((item) => item._id !== task._id));
+          setError("Offline: task deletion saved and will sync when you reconnect.");
         }
       } },
     ]);
