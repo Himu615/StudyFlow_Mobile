@@ -9,12 +9,19 @@ import { enqueueSync, loadTaskCache, readSyncQueue, saveTaskCache, writeSyncQueu
 
 const TOKEN_KEY = "studyflow_token";
 const USER_KEY = "studyflow_user";
+const NOTIFICATION_KEY = "studyflow_task_notifications";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({ shouldShowAlert: true, shouldPlaySound: true, shouldSetBadge: false }),
 });
 
 async function scheduleTaskNotification(task) {
+  const notificationMap = JSON.parse((await AsyncStorage.getItem(NOTIFICATION_KEY)) || "{}");
+  if (task?._id && notificationMap[task._id]) {
+    await Notifications.cancelScheduledNotificationAsync(notificationMap[task._id]).catch(() => {});
+    delete notificationMap[task._id];
+    await AsyncStorage.setItem(NOTIFICATION_KEY, JSON.stringify(notificationMap));
+  }
   if (!task?.dueDate) return;
   const dueDate = new Date(task.dueDate);
   const reminderMinutes = Number(task.reminderMinutesBefore || 0);
@@ -25,10 +32,28 @@ async function scheduleTaskNotification(task) {
     const requested = await Notifications.requestPermissionsAsync();
     if (!requested.granted) return;
   }
-  await Notifications.scheduleNotificationAsync({
+  const identifier = await Notifications.scheduleNotificationAsync({
     content: { title: reminderMinutes ? "StudyFlow task reminder" : "StudyFlow task due", body: task.title, data: { taskId: task._id } },
     trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: notificationDate },
   });
+  notificationMap[task._id] = identifier;
+  await AsyncStorage.setItem(NOTIFICATION_KEY, JSON.stringify(notificationMap));
+}
+
+async function cancelTaskNotification(taskId) {
+  const notificationMap = JSON.parse((await AsyncStorage.getItem(NOTIFICATION_KEY)) || "{}");
+  if (!notificationMap[taskId]) return;
+  await Notifications.cancelScheduledNotificationAsync(notificationMap[taskId]).catch(() => {});
+  delete notificationMap[taskId];
+  await AsyncStorage.setItem(NOTIFICATION_KEY, JSON.stringify(notificationMap));
+}
+
+function localDateTimeInput(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (number) => String(number).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function Button({ title, onPress, disabled = false }) {
@@ -43,7 +68,7 @@ function TaskForm({ task, token, onCancel, onSaved }) {
   const [title, setTitle] = useState(task?.title || "");
   const [priority, setPriority] = useState(task?.priority || "medium");
   const [minutes, setMinutes] = useState(String(task?.estimatedMinutes || 25));
-  const [dueDate, setDueDate] = useState(task?.dueDate ? new Date(task.dueDate).toISOString().slice(0, 16) : "");
+  const [dueDate, setDueDate] = useState(localDateTimeInput(task?.dueDate));
   const [reminder, setReminder] = useState(task?.reminderMinutesBefore ? String(task.reminderMinutesBefore) : "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -163,14 +188,15 @@ function FocusPanel({ token }) {
     setSeconds(0);
     setMessage("");
     setRunning(true);
-    intervalRef.current = setInterval(() => setSeconds((value) => value + 1), 1000);
+    intervalRef.current = setInterval(() => setSeconds(Math.floor((Date.now() - startTime.getTime()) / 1000)), 1000);
   }
 
   async function stop() {
     clearInterval(intervalRef.current);
     setRunning(false);
     const endedAt = new Date();
-    const durationMinutes = Math.max(1, Math.round(seconds / 60));
+    const elapsedSeconds = startedAt ? Math.max(0, Math.floor((endedAt.getTime() - startedAt.getTime()) / 1000)) : seconds;
+    const durationMinutes = Math.max(1, Math.round(elapsedSeconds / 60));
     try {
       await apiRequest("/study/sessions", { method: "POST", body: JSON.stringify({ startedAt: startedAt.toISOString(), endedAt: endedAt.toISOString(), durationMinutes }) }, token);
       setMessage(`Saved ${durationMinutes} minute${durationMinutes === 1 ? "" : "s"} study session.`);
@@ -243,6 +269,9 @@ function HomeScreen({ auth, onLogout }) {
       setTasks(data.tasks || []);
       await saveTaskCache(auth.user?.id || auth.user?._id, data.tasks || []);
       await flushSyncQueue();
+      const refreshed = await apiRequest("/tasks", {}, auth.token);
+      setTasks(refreshed.tasks || []);
+      await saveTaskCache(auth.user?.id || auth.user?._id, refreshed.tasks || []);
     } catch (requestError) {
       const cached = await loadTaskCache(auth.user?.id || auth.user?._id);
       setTasks(cached);
@@ -275,13 +304,14 @@ function HomeScreen({ auth, onLogout }) {
 
   async function toggleTask(task) {
     const nextCompleted = !task.completed;
-    setTasks((current) => current.map((item) => item._id === task._id ? { ...item, completed: nextCompleted } : item));
+    const nextTasks = tasks.map((item) => item._id === task._id ? { ...item, completed: nextCompleted } : item);
+    setTasks(nextTasks);
     try {
       const data = await apiRequest(`/tasks/${task._id}`, { method: "PATCH", body: JSON.stringify({ completed: nextCompleted }) }, auth.token);
       setTasks((current) => current.map((item) => item._id === task._id ? data.task : item));
     } catch (requestError) {
       await enqueueSync(auth.user?.id || auth.user?._id, { type: "updateTask", id: task._id, patch: { completed: nextCompleted } });
-      await saveTaskCache(auth.user?.id || auth.user?._id, tasks.map((item) => item._id === task._id ? { ...item, completed: nextCompleted } : item));
+      await saveTaskCache(auth.user?.id || auth.user?._id, nextTasks);
       setError("Offline: task change saved and will sync when you reconnect.");
     }
   }
@@ -303,10 +333,12 @@ function HomeScreen({ auth, onLogout }) {
       { text: "Delete", style: "destructive", onPress: async () => {
         try {
           await apiRequest(`/tasks/${task._id}`, { method: "DELETE" }, auth.token);
+          await cancelTaskNotification(task._id);
           setTasks((current) => current.filter((item) => item._id !== task._id));
           await saveTaskCache(auth.user?.id || auth.user?._id, tasks.filter((item) => item._id !== task._id));
         } catch (requestError) {
           await enqueueSync(auth.user?.id || auth.user?._id, { type: "deleteTask", id: task._id });
+          await cancelTaskNotification(task._id);
           setTasks((current) => current.filter((item) => item._id !== task._id));
           setError("Offline: task deletion saved and will sync when you reconnect.");
         }
@@ -341,9 +373,15 @@ export default function App() {
       try {
         const token = await AsyncStorage.getItem(TOKEN_KEY);
         if (!token) return;
-        const data = await apiRequest("/auth/me", {}, token);
-        await AsyncStorage.setItem(USER_KEY, JSON.stringify(data.user));
-        setAuth({ token, user: data.user });
+        const cachedUser = JSON.parse((await AsyncStorage.getItem(USER_KEY)) || "null");
+        try {
+          const data = await apiRequest("/auth/me", {}, token);
+          await AsyncStorage.setItem(USER_KEY, JSON.stringify(data.user));
+          setAuth({ token, user: data.user });
+        } catch (requestError) {
+          if (requestError.status === 401 || requestError.status === 403 || !cachedUser) throw requestError;
+          setAuth({ token, user: cachedUser });
+        }
       } catch {
         await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]);
       } finally {
