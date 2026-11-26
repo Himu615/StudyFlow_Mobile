@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, AppState, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, AppState, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { StatusBar } from "expo-status-bar";
 import * as Notifications from "expo-notifications";
@@ -65,12 +65,23 @@ function Field({ label, secureTextEntry, value, onChangeText, keyboardType }) {
   return <View style={styles.fieldGroup}><Text style={styles.label}>{label}</Text><TextInput autoCapitalize={keyboardType === "email-address" ? "none" : "sentences"} autoCorrect={false} keyboardType={keyboardType} onChangeText={onChangeText} placeholder={label} placeholderTextColor="#91a09a" secureTextEntry={secureTextEntry} style={styles.input} value={value} /></View>;
 }
 
+function DateTimePickerModal({ value, onChange, onClose }) {
+  const source = value ? new Date(value) : new Date();
+  const [selectedDate, setSelectedDate] = useState(localDateKey(source));
+  const [selectedTime, setSelectedTime] = useState(String(source.getHours()).padStart(2, "0") + ":" + String(source.getMinutes()).padStart(2, "0"));
+  const days = Array.from({ length: 14 }, (_, index) => { const date = new Date(); date.setHours(0, 0, 0, 0); date.setDate(date.getDate() + index); return { key: localDateKey(date), label: date.toLocaleDateString(undefined, { weekday: "short" }), short: date.toLocaleDateString(undefined, { day: "numeric", month: "short" }) }; });
+  const times = Array.from({ length: 16 }, (_, index) => { const minutes = 6 * 60 + index * 60; return String(Math.floor(minutes / 60)).padStart(2, "0") + ":" + String(minutes % 60).padStart(2, "0"); });
+  function confirm() { onChange(selectedDate + "T" + selectedTime); onClose(); }
+  return <Modal animationType="slide" transparent visible onRequestClose={onClose}><View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(16,47,42,0.45)" }}><View style={{ maxHeight: "82%", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, backgroundColor: "#f5f6f1" }}><View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><Text style={{ color: "#17362f", fontSize: 20, fontWeight: "800" }}>Choose due date & time</Text><Pressable onPress={onClose}><Text style={styles.closeText}>Cancel</Text></Pressable></View><Text style={styles.label}>Calendar</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 18 }}>{days.map((day) => <Pressable key={day.key} onPress={() => setSelectedDate(day.key)} style={{ minWidth: 72, alignItems: "center", borderRadius: 14, paddingVertical: 11, backgroundColor: selectedDate === day.key ? "#11806b" : "#fff", borderWidth: 1, borderColor: selectedDate === day.key ? "#11806b" : "#dfe3dc" }}><Text style={{ color: selectedDate === day.key ? "#dff2e9" : "#7b8a83", fontSize: 12, fontWeight: "700" }}>{day.label}</Text><Text style={{ marginTop: 4, color: selectedDate === day.key ? "#fff" : "#17362f", fontWeight: "800" }}>{day.short}</Text></Pressable>)}</ScrollView><Text style={styles.label}>Time</Text><View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 18 }}>{times.map((time) => <Pressable key={time} onPress={() => setSelectedTime(time)} style={{ width: "23%", alignItems: "center", borderRadius: 10, paddingVertical: 10, backgroundColor: selectedTime === time ? "#dff2e9" : "#fff", borderWidth: 1, borderColor: selectedTime === time ? "#11806b" : "#dfe3dc" }}><Text style={{ color: selectedTime === time ? "#11806b" : "#62736b", fontWeight: "700" }}>{time}</Text></Pressable>)}</View><Button title={"Set " + selectedDate + " " + selectedTime} onPress={confirm} /></View></View></Modal>;
+}
+
 function TaskForm({ task, initialDueDate, token, onCancel, onSaved }) {
   const [title, setTitle] = useState(task?.title || "");
   const [priority, setPriority] = useState(task?.priority || "medium");
   const [minutes, setMinutes] = useState(String(task?.estimatedMinutes || 25));
   const [dueDate, setDueDate] = useState(localDateTimeInput(task?.dueDate || initialDueDate));
   const [reminder, setReminder] = useState(task?.reminderMinutesBefore ? String(task.reminderMinutesBefore) : "");
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -101,11 +112,13 @@ function TaskForm({ task, initialDueDate, token, onCancel, onSaved }) {
     <Text style={styles.label}>Priority</Text>
     <View style={styles.priorityRow}>{["low", "medium", "high"].map((item) => <Pressable key={item} onPress={() => setPriority(item)} style={[styles.priorityButton, priority === item && styles.priorityButtonActive]}><Text style={[styles.priorityText, priority === item && styles.priorityTextActive]}>{item}</Text></Pressable>)}</View>
     <View style={styles.fieldGroup}><Text style={styles.label}>Estimated minutes</Text><TextInput keyboardType="numeric" onChangeText={setMinutes} style={styles.input} value={minutes} /></View>
-    <View style={styles.fieldGroup}><Text style={styles.label}>Due date and time</Text><TextInput autoCapitalize="none" placeholder="YYYY-MM-DDTHH:MM" placeholderTextColor="#91a09a" onChangeText={setDueDate} style={styles.input} value={dueDate} /></View>
+    <View style={styles.fieldGroup}><Text style={styles.label}>Due date and time</Text><Pressable onPress={() => setShowDatePicker(true)} style={[styles.input, { justifyContent: "center" }]}><Text style={{ color: dueDate ? "#17362f" : "#91a09a", fontSize: 16 }}>{dueDate ? dueDate.replace("T", "  ") : "Choose date and time"}</Text></Pressable></View>
     <Text style={styles.label}>Reminder</Text>
     <View style={styles.priorityRow}>{[["", "None"], ["5", "5 min"], ["15", "15 min"], ["30", "30 min"], ["60", "1 hour"], ["1440", "1 day"]].map(([value, label]) => <Pressable key={label} onPress={() => setReminder(value)} style={[styles.reminderButton, reminder === value && styles.priorityButtonActive]}><Text style={[styles.priorityText, reminder === value && styles.priorityTextActive]}>{label}</Text></Pressable>)}</View>
+    <TextInput keyboardType="numeric" value={["", "5", "15", "30", "60", "1440"].includes(reminder) ? "" : reminder} onChangeText={(value) => setReminder(value.replace(/[^0-9]/g, ""))} placeholder="Or enter custom minutes" placeholderTextColor="#91a09a" style={styles.input} />
     {error ? <Text style={styles.error}>{error}</Text> : null}
     <Button disabled={busy} title={busy ? "Saving..." : task ? "Save changes" : "Add task"} onPress={submit} />
+    {showDatePicker ? <DateTimePickerModal value={dueDate} onChange={setDueDate} onClose={() => setShowDatePicker(false)} /> : null}
   </View>;
 }
 
@@ -174,9 +187,12 @@ function StudyStructure({ token }) {
   </View>;
 }
 
-function FocusPanel({ token }) {
+function FocusPanel({ token, tasks = [], isFocusPage = false, onOpenFocus }) {
   const [running, setRunning] = useState(false);
   const [seconds, setSeconds] = useState(0);
+  const [durationSeconds, setDurationSeconds] = useState(25 * 60);
+  const [selectedTask, setSelectedTask] = useState(null);
+  const [focusDate, setFocusDate] = useState(localDateKey());
   const [startedAt, setStartedAt] = useState(null);
   const [message, setMessage] = useState("");
   const intervalRef = useRef(null);
@@ -185,18 +201,20 @@ function FocusPanel({ token }) {
 
   function start() {
     const startTime = new Date();
+    const totalSeconds = Math.max(60, (Number(selectedTask?.estimatedMinutes) || 25) * 60);
     setStartedAt(startTime);
-    setSeconds(0);
+    setDurationSeconds(totalSeconds);
+    setSeconds(totalSeconds);
     setMessage("");
     setRunning(true);
-    intervalRef.current = setInterval(() => setSeconds(Math.floor((Date.now() - startTime.getTime()) / 1000)), 1000);
+    intervalRef.current = setInterval(() => setSeconds((current) => Math.max(0, current - 1)), 1000);
   }
 
   async function stop() {
     clearInterval(intervalRef.current);
     setRunning(false);
     const endedAt = new Date();
-    const elapsedSeconds = startedAt ? Math.max(0, Math.floor((endedAt.getTime() - startedAt.getTime()) / 1000)) : seconds;
+    const elapsedSeconds = startedAt ? Math.max(0, durationSeconds - seconds) : seconds;
     const durationMinutes = Math.max(1, Math.round(elapsedSeconds / 60));
     try {
       await apiRequest("/study/sessions", { method: "POST", body: JSON.stringify({ startedAt: startedAt.toISOString(), endedAt: endedAt.toISOString(), durationMinutes }) }, token);
@@ -208,9 +226,10 @@ function FocusPanel({ token }) {
     setStartedAt(null);
   }
 
+  const focusTasks = tasks.filter((task) => !task.completed && (!task.dueDate || localDateKey(task.dueDate) === focusDate));
   const minutes = String(Math.floor(seconds / 60)).padStart(2, "0");
   const remainingSeconds = String(seconds % 60).padStart(2, "0");
-  return <View style={styles.focusCard}><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Focus session</Text><Text style={styles.focusTime}>{minutes}:{remainingSeconds}</Text></View><Text style={styles.mutedText}>Start a focus timer and save the session to your study history.</Text><View style={styles.focusActions}>{running ? <Button title="Stop and save" onPress={stop} /> : <Button title="Start focus" onPress={start} />}</View>{message ? <Text style={styles.successText}>{message}</Text> : null}</View>;
+  return <View style={styles.focusCard}><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Focus session</Text><Text style={styles.focusTime}>{minutes}:{remainingSeconds}</Text></View><Text style={styles.mutedText}>Choose a date and task; the timer uses its estimated minutes.</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 10 }}>{Array.from({ length: 7 }, (_, index) => { const date = new Date(); date.setHours(0, 0, 0, 0); date.setDate(date.getDate() + index); const key = localDateKey(date); return <Pressable key={key} onPress={() => { setFocusDate(key); setSelectedTask(null); }} style={{ borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: focusDate === key ? "#dff2e9" : "#21463e" }}><Text style={{ color: focusDate === key ? "#11806b" : "#c9d8d2", fontSize: 11, fontWeight: "700" }}>{date.toLocaleDateString(undefined, { weekday: "short", day: "numeric" })}</Text></Pressable>; })}</ScrollView>{isFocusPage ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>{focusTasks.slice(0, 12).map((task) => <Pressable key={task._id} disabled={running} onPress={() => { setSelectedTask(task); setDurationSeconds(Math.max(60, (Number(task.estimatedMinutes) || 25) * 60)); setSeconds(Math.max(60, (Number(task.estimatedMinutes) || 25) * 60)); }} style={{ maxWidth: 180, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: selectedTask?._id === task._id ? "#dff2e9" : "#21463e" }}><Text numberOfLines={1} style={{ color: selectedTask?._id === task._id ? "#11806b" : "#fff", fontWeight: "700" }}>{task.title}</Text><Text style={{ marginTop: 3, color: selectedTask?._id === task._id ? "#11806b" : "#c9d8d2", fontSize: 11 }}>{task.estimatedMinutes || 25} min</Text></Pressable>)}</ScrollView> : null}<View style={styles.focusActions}>{running ? <Button title="Stop and save" onPress={stop} /> : isFocusPage ? <Button title={selectedTask ? "Start task focus" : "Start 25-minute focus"} onPress={start} /> : <Button title="Open Focus" onPress={onOpenFocus} />}</View>{message ? <Text style={styles.successText}>{message}</Text> : null}</View>;
 }
 
 const notesStorageKey = (userId) => `studyflow_notes_${userId || "current"}`;
@@ -312,6 +331,10 @@ function PlannerPanel({ tasks, token, onSaved }) {
   </View>;
 }
 
+function TaskActivityChart({ days, maxCount }) {
+  return <View style={styles.chartCard}><Text style={styles.sectionTitle}>Tasks added vs completed</Text><Text style={styles.mutedText}>Added / completed per day</Text>{days.map((day) => <View key={day.date} style={{ marginTop: 14 }}><View style={styles.subjectLine}><Text style={styles.chartLabel}>{day.date.slice(5)}</Text><Text style={styles.chartValue}>{day.added} / {day.completed}</Text></View><View style={{ flexDirection: "row", gap: 6, marginTop: 5 }}><View style={{ flex: 1, height: 8, overflow: "hidden", borderRadius: 8, backgroundColor: "#edf1ed" }}><View style={{ width: (Math.max(3, (day.added / maxCount) * 100)) + "%", height: "100%", borderRadius: 8, backgroundColor: "#9ac7b6" }} /></View><View style={{ flex: 1, height: 8, overflow: "hidden", borderRadius: 8, backgroundColor: "#edf1ed" }}><View style={{ width: (day.completed ? Math.max(3, (day.completed / maxCount) * 100) : 0) + "%", height: "100%", borderRadius: 8, backgroundColor: "#11806b" }} /></View></View></View>)}</View>;
+}
+
 function InsightsPanel({ token }) {
   const [days, setDays] = useState(7);
   const [data, setData] = useState(null);
@@ -337,6 +360,11 @@ function InsightsPanel({ token }) {
     return { ...subject, total: linked.length, completed, percent: linked.length ? Math.round((completed / linked.length) * 100) : 0 };
   });
   const maxMinutes = Math.max(1, ...(data?.days || []).map((day) => Number(day.studyMinutes) || 0));
+  const taskDays = (data?.days || []).map((day) => {
+    const dayTasks = tasks.filter((task) => localDateKey(task.dueDate) === day.date);
+    return { ...day, added: dayTasks.length, completed: dayTasks.filter((task) => task.completed).length };
+  });
+  const maxTaskCount = Math.max(1, ...taskDays.map((day) => Math.max(day.added, day.completed)));
 
   return <View>
     <Text style={styles.plannerIntro}>Understand your study activity and consistency.</Text>
@@ -346,6 +374,7 @@ function InsightsPanel({ token }) {
       <View style={styles.statsGrid}><View style={styles.statCard}><Text style={styles.mutedText}>Total tasks</Text><Text style={styles.statValue}>{data.totals?.totalTasks || 0}</Text></View><View style={styles.statCard}><Text style={styles.mutedText}>Completed</Text><Text style={styles.statValue}>{data.totals?.currentCompletedTasks || 0}</Text></View><View style={styles.statCard}><Text style={styles.mutedText}>Study minutes</Text><Text style={styles.statValue}>{data.totals?.studyMinutes || 0}</Text></View><View style={styles.statCard}><Text style={styles.mutedText}>Day streak</Text><Text style={styles.statValue}>{data.streak || 0}</Text></View></View>
       <View style={styles.chartCard}><Text style={styles.sectionTitle}>Study minutes</Text>{(data.days || []).map((day) => <View key={day.date} style={styles.chartRow}><Text style={styles.chartLabel}>{day.date.slice(5)}</Text><View style={styles.chartTrack}><View style={[styles.chartBar, { width: `${Math.max(3, ((Number(day.studyMinutes) || 0) / maxMinutes) * 100)}%` }]} /></View><Text style={styles.chartValue}>{day.studyMinutes || 0}m</Text></View>)}</View>
       <View style={styles.chartCard}><Text style={styles.sectionTitle}>Subject progress</Text>{subjectProgress.length === 0 ? <Text style={styles.mutedText}>No subjects yet.</Text> : subjectProgress.map((subject) => <View key={subject._id} style={styles.subjectProgressRow}><View style={styles.subjectLine}><Text style={styles.structureName}>{subject.name}</Text><Text style={styles.chartValue}>{subject.percent}%</Text></View><View style={styles.chartTrack}><View style={[styles.chartBar, { width: `${subject.percent}%`, backgroundColor: subject.color || "#11806b" }]} /></View></View>)}</View>
+      <TaskActivityChart days={taskDays} maxCount={maxTaskCount} />
     </>}
   </View>;
 }
@@ -530,7 +559,7 @@ function HomeScreen({ auth, onLogout }) {
 
   return <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
     <View style={styles.homeHeader}><View><Text style={styles.smallEyebrow}>STUDYFLOW</Text><Text style={styles.homeTitle}>{viewTitle}</Text></View><Pressable onPress={onLogout} style={styles.logoutButton}><Text style={styles.logoutText}>Log out</Text></Pressable></View>
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.navBar}>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.navBar, { paddingHorizontal: 10, gap: 6 }]}>
       {NAV_ITEMS.map((item) => <Pressable key={item} onPress={() => setActiveView(item)} style={[styles.navItem, activeView === item && styles.navItemActive]}><Text style={[styles.navItemText, activeView === item && styles.navItemTextActive]}>{item}</Text></Pressable>)}
     </ScrollView>
     <ScrollView contentContainerStyle={styles.homeContent}>
@@ -542,7 +571,7 @@ function HomeScreen({ auth, onLogout }) {
         {!loadingTasks && tasks.length === 0 ? <View style={styles.emptyCard}><Text style={styles.emptyTitle}>No tasks yet</Text><Text style={styles.emptyText}>Your tasks will appear here once you create them.</Text></View> : null}
         {tasks.map((task) => <View key={task._id} style={styles.taskCard}><Pressable onPress={() => toggleTask(task)} style={styles.taskMain}><View style={[styles.checkbox, task.completed && styles.checkboxDone]}>{task.completed ? <Text style={styles.checkmark}>✓</Text> : null}</View><View style={styles.taskCopy}><Text style={[styles.taskTitle, task.completed && styles.taskCompleted]}>{task.title}</Text><Text style={styles.taskMeta}>{task.priority || "medium"}{task.estimatedMinutes ? ` • ${task.estimatedMinutes} min` : ""}{task.dueDate ? ` • Due ${new Date(task.dueDate).toLocaleString()}` : ""}</Text></View></Pressable><View style={styles.taskActions}><Pressable onPress={() => { setEditingTask(task); setShowForm(true); }}><Text style={styles.editText}>Edit</Text></Pressable><Pressable onPress={() => deleteTask(task)}><Text style={styles.deleteText}>Delete</Text></Pressable></View></View>)}</> : null}
       {showStructure ? <StudyStructure token={auth.token} /> : null}
-      {showFocus ? <FocusPanel token={auth.token} /> : null}
+      {showFocus ? <FocusPanel token={auth.token} tasks={tasks} isFocusPage={activeView === "focus"} onOpenFocus={() => setActiveView("focus")} /> : null}
       {activeView === "insights" ? <InsightsPanel token={auth.token} /> : null}
       {activeView === "planner" ? <PlannerPanel tasks={tasks} token={auth.token} onSaved={handleSaved} /> : null}
       {activeView === "notes" ? <NotesPanel userId={auth.user?.id || auth.user?._id} /> : null}
