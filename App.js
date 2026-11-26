@@ -213,6 +213,74 @@ function FocusPanel({ token }) {
   return <View style={styles.focusCard}><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Focus session</Text><Text style={styles.focusTime}>{minutes}:{remainingSeconds}</Text></View><Text style={styles.mutedText}>Start a focus timer and save the session to your study history.</Text><View style={styles.focusActions}>{running ? <Button title="Stop and save" onPress={stop} /> : <Button title="Start focus" onPress={start} />}</View>{message ? <Text style={styles.successText}>{message}</Text> : null}</View>;
 }
 
+const notesStorageKey = (userId) => `studyflow_notes_${userId || "current"}`;
+
+function NotesPanel({ userId }) {
+  const [notes, setNotes] = useState([]);
+  const [search, setSearch] = useState("");
+  const [editing, setEditing] = useState(null);
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState(true);
+
+  useEffect(() => {
+    async function loadNotes() {
+      try {
+        const raw = await AsyncStorage.getItem(notesStorageKey(userId));
+        setNotes(raw ? JSON.parse(raw) : []);
+      } finally {
+        setBusy(false);
+      }
+    }
+    loadNotes();
+  }, [userId]);
+
+  async function persist(nextNotes) {
+    setNotes(nextNotes);
+    await AsyncStorage.setItem(notesStorageKey(userId), JSON.stringify(nextNotes));
+  }
+
+  async function saveNote() {
+    const cleanTitle = title.trim() || "Untitled note";
+    const now = new Date().toISOString();
+    const nextNotes = editing
+      ? notes.map((note) => note.id === editing.id ? { ...note, title: cleanTitle, body, updatedAt: now } : note)
+      : [{ id: String(Date.now()), title: cleanTitle, body, createdAt: now, updatedAt: now }, ...notes];
+    await persist(nextNotes);
+    setEditing(null);
+    setTitle("");
+    setBody("");
+  }
+
+  function startEdit(note) {
+    setEditing(note);
+    setTitle(note.title);
+    setBody(note.body);
+  }
+
+  function removeNote(note) {
+    Alert.alert("Delete note", `Delete \"${note.title}\"?`, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Delete", style: "destructive", onPress: () => persist(notes.filter((item) => item.id !== note.id)) },
+    ]);
+  }
+
+  const visibleNotes = notes.filter((note) => `${note.title} ${note.body}`.toLowerCase().includes(search.toLowerCase()));
+
+  return <View>
+    <View style={styles.notesHeader}><Text style={styles.sectionTitle}>Notepad</Text><Text style={styles.mutedText}>{notes.length} note{notes.length === 1 ? "" : "s"}</Text></View>
+    <TextInput value={search} onChangeText={setSearch} placeholder="Search notes" placeholderTextColor="#91a09a" style={styles.input} />
+    <View style={styles.noteEditor}>
+      <TextInput value={title} onChangeText={setTitle} placeholder="Note title" placeholderTextColor="#91a09a" style={styles.noteTitleInput} />
+      <TextInput value={body} onChangeText={setBody} placeholder="Write anything..." placeholderTextColor="#91a09a" multiline textAlignVertical="top" style={styles.noteBodyInput} />
+      <View style={styles.noteEditorActions}><Button title={editing ? "Save changes" : "Save note"} onPress={saveNote} /><Pressable onPress={() => { setEditing(null); setTitle(""); setBody(""); }}><Text style={styles.closeText}>Clear</Text></Pressable></View>
+    </View>
+    {busy ? <ActivityIndicator color="#11806b" /> : null}
+    {!busy && visibleNotes.length === 0 ? <View style={styles.emptyCard}><Text style={styles.emptyTitle}>No notes found</Text><Text style={styles.emptyText}>Write a note above to keep ideas on this device.</Text></View> : null}
+    {visibleNotes.map((note) => <View key={note.id} style={styles.noteCard}><Text style={styles.noteCardTitle}>{note.title}</Text><Text style={styles.noteCardBody} numberOfLines={4}>{note.body || "Empty note"}</Text><Text style={styles.noteDate}>{new Date(note.updatedAt).toLocaleString()}</Text><View style={styles.noteActions}><Pressable onPress={() => startEdit(note)}><Text style={styles.editText}>Edit</Text></Pressable><Pressable onPress={() => removeNote(note)}><Text style={styles.deleteText}>Delete</Text></Pressable></View></View>)}
+  </View>;
+}
+
 function AuthScreen({ mode, setMode, onAuthenticated }) {
   const isSignup = mode === "signup";
   const [name, setName] = useState("");
@@ -369,7 +437,7 @@ function HomeScreen({ auth, onLogout }) {
       {showStructure ? <StudyStructure token={auth.token} /> : null}
       {showFocus ? <FocusPanel token={auth.token} /> : null}
       {activeView === "planner" ? <View style={styles.placeholderCard}><Text style={styles.sectionTitle}>Planner</Text><Text style={styles.mutedText}>Plan tasks by date. The full calendar view is next.</Text></View> : null}
-      {activeView === "notes" ? <View style={styles.placeholderCard}><Text style={styles.sectionTitle}>Notes</Text><Text style={styles.mutedText}>Your offline notepad will be added here.</Text><Button title="New note" onPress={() => {}} /></View> : null}
+      {activeView === "notes" ? <NotesPanel userId={auth.user?.id || auth.user?._id} /> : null}
       {activeView === "settings" ? <View style={styles.placeholderCard}><Text style={styles.sectionTitle}>Settings</Text><Text style={styles.mutedText}>Account: {auth.user?.email || "signed in"}</Text></View> : null}
     </ScrollView>
   </SafeAreaView>;
@@ -418,5 +486,5 @@ const styles = StyleSheet.create({
   flex: { flex: 1 }, loading: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#f5f6f1" }, loadingText: { marginTop: 12, color: "#5e716a" },
   authContainer: { flexGrow: 1, justifyContent: "center", padding: 24, backgroundColor: "#102f2a" }, brandMark: { alignSelf: "center", alignItems: "center", justifyContent: "center", width: 58, height: 58, borderRadius: 16, backgroundColor: "#11806b" }, brandMarkText: { color: "#fff", fontSize: 34, fontWeight: "800" }, brand: { marginTop: 12, textAlign: "center", color: "#fff", fontSize: 30, fontWeight: "800" }, subtitle: { marginTop: 6, marginBottom: 26, textAlign: "center", color: "#c9d8d2", fontSize: 15 },
   card: { borderRadius: 20, padding: 22, backgroundColor: "#fff" }, heading: { color: "#17362f", fontSize: 24, fontWeight: "800" }, cardSubtitle: { marginTop: 6, marginBottom: 20, color: "#718078" }, fieldGroup: { marginBottom: 15 }, label: { marginBottom: 7, color: "#304d44", fontSize: 13, fontWeight: "700" }, input: { borderWidth: 1, borderColor: "#dfe3dc", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 13, color: "#17362f", fontSize: 16 }, button: { alignItems: "center", borderRadius: 12, paddingVertical: 14, backgroundColor: "#11806b" }, buttonText: { color: "#fff", fontSize: 16, fontWeight: "800" }, disabledButton: { opacity: 0.6 }, pressedButton: { opacity: 0.8 }, error: { marginBottom: 12, color: "#b42318", lineHeight: 20 }, switchButton: { alignItems: "center", marginTop: 18 }, switchText: { color: "#11806b", fontWeight: "700" }, apiHint: { marginTop: 18, textAlign: "center", color: "#a9bbb3", fontSize: 11 },
-  screen: { flex: 1, backgroundColor: "#f5f6f1" }, homeHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 22, paddingTop: 24, paddingBottom: 18, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#dfe3dc" }, smallEyebrow: { color: "#11806b", fontSize: 11, fontWeight: "800", letterSpacing: 1.4 }, homeTitle: { marginTop: 3, color: "#17362f", fontSize: 28, fontWeight: "800" }, logoutButton: { borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, backgroundColor: "#eef8f3" }, logoutText: { color: "#11806b", fontWeight: "700" }, navBar: { paddingHorizontal: 16, paddingVertical: 10, gap: 8, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#dfe3dc" }, navItem: { borderRadius: 12, paddingHorizontal: 13, paddingVertical: 8, backgroundColor: "#f1f4f1" }, navItemActive: { backgroundColor: "#dff2e9" }, navItemText: { color: "#687870", fontSize: 12, fontWeight: "700", textTransform: "capitalize" }, navItemTextActive: { color: "#11806b" }, homeContent: { padding: 22, paddingBottom: 36 }, greeting: { color: "#17362f", fontSize: 24, fontWeight: "800" }, homeSubtitle: { marginTop: 8, color: "#6d7c76", fontSize: 15 }, sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 28, marginBottom: 12 }, sectionTitle: { color: "#17362f", fontSize: 19, fontWeight: "800" }, sectionActions: { flexDirection: "row", alignItems: "center", gap: 16 }, refreshText: { color: "#11806b", fontWeight: "700" }, addButton: { borderRadius: 9, paddingHorizontal: 11, paddingVertical: 8, backgroundColor: "#11806b" }, addButtonText: { color: "#fff", fontWeight: "800" }, taskLoading: { alignItems: "center", padding: 24 }, taskCard: { flexDirection: "row", alignItems: "center", marginBottom: 10, borderRadius: 16, padding: 15, backgroundColor: "#fff", borderWidth: 1, borderColor: "#dfe3dc" }, taskMain: { flex: 1, flexDirection: "row", alignItems: "center" }, checkbox: { alignItems: "center", justifyContent: "center", width: 27, height: 27, marginRight: 12, borderRadius: 8, borderWidth: 1.5, borderColor: "#b9c8c0" }, checkboxDone: { borderColor: "#11806b", backgroundColor: "#11806b" }, checkmark: { color: "#fff", fontSize: 18, fontWeight: "800" }, taskCopy: { flex: 1 }, taskTitle: { color: "#17362f", fontSize: 15, fontWeight: "700" }, taskCompleted: { color: "#8a9992", textDecorationLine: "line-through" }, taskMeta: { marginTop: 5, color: "#7b8a83", fontSize: 12 }, taskActions: { flexDirection: "row", gap: 12, marginLeft: 8 }, editText: { color: "#11806b", fontSize: 12, fontWeight: "800" }, deleteText: { color: "#b42318", fontSize: 12, fontWeight: "800" }, emptyCard: { marginTop: 8, borderRadius: 18, padding: 20, backgroundColor: "#fff", borderWidth: 1, borderColor: "#dfe3dc" }, emptyTitle: { color: "#17362f", fontSize: 18, fontWeight: "800" }, emptyText: { marginTop: 8, color: "#6d7c76", lineHeight: 21 }, formCard: { marginBottom: 18, borderRadius: 18, padding: 18, backgroundColor: "#fff", borderWidth: 1, borderColor: "#dfe3dc" }, formHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }, formTitle: { color: "#17362f", fontSize: 20, fontWeight: "800" }, closeText: { color: "#6d7c76", fontWeight: "700" }, priorityRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 15 }, priorityButton: { flex: 1, alignItems: "center", borderRadius: 10, paddingVertical: 10, backgroundColor: "#f1f4f1" }, reminderButton: { minWidth: 62, alignItems: "center", borderRadius: 10, paddingVertical: 10, paddingHorizontal: 8, backgroundColor: "#f1f4f1" }, priorityButtonActive: { backgroundColor: "#dff2e9" }, priorityText: { color: "#62736b", fontWeight: "700", textTransform: "capitalize" }, priorityTextActive: { color: "#11806b" }, structureBlock: { marginTop: 8, borderRadius: 18, padding: 18, backgroundColor: "#fff", borderWidth: 1, borderColor: "#dfe3dc" }, inlineForm: { gap: 10, marginBottom: 12 }, structureRow: { flexDirection: "row", alignItems: "center", paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: "#eef1ed" }, structureName: { flex: 1, color: "#17362f", fontWeight: "700" }, mutedText: { color: "#7b8a83", fontSize: 13 }, colorDot: { width: 10, height: 10, marginRight: 10, borderRadius: 5 }, goalDot: { width: 25, marginRight: 4 }, goalDotText: { color: "#11806b", fontSize: 20 }, goalCopy: { flex: 1 }, focusCard: { marginTop: 16, borderRadius: 18, padding: 18, backgroundColor: "#102f2a" }, focusTime: { color: "#fff", fontSize: 20, fontWeight: "800" }, focusActions: { marginTop: 14 }, successText: { marginTop: 10, color: "#d9f5e7", fontWeight: "700" }, placeholderCard: { marginTop: 16, gap: 12, borderRadius: 18, padding: 20, backgroundColor: "#fff", borderWidth: 1, borderColor: "#dfe3dc" },
+  screen: { flex: 1, backgroundColor: "#f5f6f1" }, homeHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 22, paddingTop: 24, paddingBottom: 18, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#dfe3dc" }, smallEyebrow: { color: "#11806b", fontSize: 11, fontWeight: "800", letterSpacing: 1.4 }, homeTitle: { marginTop: 3, color: "#17362f", fontSize: 28, fontWeight: "800" }, logoutButton: { borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, backgroundColor: "#eef8f3" }, logoutText: { color: "#11806b", fontWeight: "700" }, navBar: { paddingHorizontal: 16, paddingVertical: 10, gap: 8, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#dfe3dc" }, navItem: { borderRadius: 12, paddingHorizontal: 13, paddingVertical: 8, backgroundColor: "#f1f4f1" }, navItemActive: { backgroundColor: "#dff2e9" }, navItemText: { color: "#687870", fontSize: 12, fontWeight: "700", textTransform: "capitalize" }, navItemTextActive: { color: "#11806b" }, homeContent: { padding: 22, paddingBottom: 36 }, greeting: { color: "#17362f", fontSize: 24, fontWeight: "800" }, homeSubtitle: { marginTop: 8, color: "#6d7c76", fontSize: 15 }, sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 28, marginBottom: 12 }, sectionTitle: { color: "#17362f", fontSize: 19, fontWeight: "800" }, sectionActions: { flexDirection: "row", alignItems: "center", gap: 16 }, refreshText: { color: "#11806b", fontWeight: "700" }, addButton: { borderRadius: 9, paddingHorizontal: 11, paddingVertical: 8, backgroundColor: "#11806b" }, addButtonText: { color: "#fff", fontWeight: "800" }, taskLoading: { alignItems: "center", padding: 24 }, taskCard: { flexDirection: "row", alignItems: "center", marginBottom: 10, borderRadius: 16, padding: 15, backgroundColor: "#fff", borderWidth: 1, borderColor: "#dfe3dc" }, taskMain: { flex: 1, flexDirection: "row", alignItems: "center" }, checkbox: { alignItems: "center", justifyContent: "center", width: 27, height: 27, marginRight: 12, borderRadius: 8, borderWidth: 1.5, borderColor: "#b9c8c0" }, checkboxDone: { borderColor: "#11806b", backgroundColor: "#11806b" }, checkmark: { color: "#fff", fontSize: 18, fontWeight: "800" }, taskCopy: { flex: 1 }, taskTitle: { color: "#17362f", fontSize: 15, fontWeight: "700" }, taskCompleted: { color: "#8a9992", textDecorationLine: "line-through" }, taskMeta: { marginTop: 5, color: "#7b8a83", fontSize: 12 }, taskActions: { flexDirection: "row", gap: 12, marginLeft: 8 }, editText: { color: "#11806b", fontSize: 12, fontWeight: "800" }, deleteText: { color: "#b42318", fontSize: 12, fontWeight: "800" }, emptyCard: { marginTop: 8, borderRadius: 18, padding: 20, backgroundColor: "#fff", borderWidth: 1, borderColor: "#dfe3dc" }, emptyTitle: { color: "#17362f", fontSize: 18, fontWeight: "800" }, emptyText: { marginTop: 8, color: "#6d7c76", lineHeight: 21 }, formCard: { marginBottom: 18, borderRadius: 18, padding: 18, backgroundColor: "#fff", borderWidth: 1, borderColor: "#dfe3dc" }, formHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }, formTitle: { color: "#17362f", fontSize: 20, fontWeight: "800" }, closeText: { color: "#6d7c76", fontWeight: "700" }, priorityRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 15 }, priorityButton: { flex: 1, alignItems: "center", borderRadius: 10, paddingVertical: 10, backgroundColor: "#f1f4f1" }, reminderButton: { minWidth: 62, alignItems: "center", borderRadius: 10, paddingVertical: 10, paddingHorizontal: 8, backgroundColor: "#f1f4f1" }, priorityButtonActive: { backgroundColor: "#dff2e9" }, priorityText: { color: "#62736b", fontWeight: "700", textTransform: "capitalize" }, priorityTextActive: { color: "#11806b" }, structureBlock: { marginTop: 8, borderRadius: 18, padding: 18, backgroundColor: "#fff", borderWidth: 1, borderColor: "#dfe3dc" }, inlineForm: { gap: 10, marginBottom: 12 }, structureRow: { flexDirection: "row", alignItems: "center", paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: "#eef1ed" }, structureName: { flex: 1, color: "#17362f", fontWeight: "700" }, mutedText: { color: "#7b8a83", fontSize: 13 }, colorDot: { width: 10, height: 10, marginRight: 10, borderRadius: 5 }, goalDot: { width: 25, marginRight: 4 }, goalDotText: { color: "#11806b", fontSize: 20 }, goalCopy: { flex: 1 }, focusCard: { marginTop: 16, borderRadius: 18, padding: 18, backgroundColor: "#102f2a" }, focusTime: { color: "#fff", fontSize: 20, fontWeight: "800" }, focusActions: { marginTop: 14 }, successText: { marginTop: 10, color: "#d9f5e7", fontWeight: "700" }, placeholderCard: { marginTop: 16, gap: 12, borderRadius: 18, padding: 20, backgroundColor: "#fff", borderWidth: 1, borderColor: "#dfe3dc" }, notesHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }, noteEditor: { marginTop: 12, marginBottom: 18, borderRadius: 18, padding: 16, backgroundColor: "#fff", borderWidth: 1, borderColor: "#dfe3dc" }, noteTitleInput: { color: "#17362f", fontSize: 18, fontWeight: "800", paddingVertical: 8 }, noteBodyInput: { minHeight: 130, marginTop: 8, color: "#40554e", fontSize: 15, lineHeight: 22 }, noteEditorActions: { flexDirection: "row", alignItems: "center", gap: 18, marginTop: 12 }, noteCard: { marginBottom: 12, borderRadius: 16, padding: 16, backgroundColor: "#fff", borderWidth: 1, borderColor: "#dfe3dc" }, noteCardTitle: { color: "#17362f", fontSize: 17, fontWeight: "800" }, noteCardBody: { marginTop: 8, color: "#40554e", lineHeight: 21 }, noteDate: { marginTop: 10, color: "#91a09a", fontSize: 11 }, noteActions: { flexDirection: "row", gap: 16, marginTop: 12 },
 });
