@@ -350,6 +350,44 @@ function InsightsPanel({ token }) {
   </View>;
 }
 
+function SettingsPanel({ auth }) {
+  const [name, setName] = useState(auth.user?.name || "");
+  const [email, setEmail] = useState(auth.user?.email || "");
+  const [permission, setPermission] = useState("Checking...");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    Notifications.getPermissionsAsync().then((result) => setPermission(result.granted ? "Enabled" : "Not enabled")).catch(() => setPermission("Unavailable"));
+  }, []);
+
+  async function requestNotifications() {
+    const result = await Notifications.requestPermissionsAsync();
+    setPermission(result.granted ? "Enabled" : "Not enabled");
+  }
+
+  async function saveProfile() {
+    setError("");
+    setMessage("");
+    if (!name.trim() || !email.trim()) return setError("Name and email are required.");
+    setBusy(true);
+    try {
+      const data = await apiRequest("/auth/profile", { method: "PATCH", body: JSON.stringify({ name: name.trim(), email: email.trim().toLowerCase() }) }, auth.token);
+      setName(data.user.name);
+      setEmail(data.user.email);
+      setMessage("Profile saved successfully.");
+    } catch (requestError) { setError(requestError.message); }
+    finally { setBusy(false); }
+  }
+
+  return <View>
+    <View style={styles.placeholderCard}><Text style={styles.sectionTitle}>Profile</Text><Text style={styles.label}>Name</Text><TextInput value={name} onChangeText={setName} style={styles.input} /><Text style={styles.label}>Email</Text><TextInput autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} style={styles.input} />{error ? <Text style={styles.error}>{error}</Text> : null}{message ? <Text style={styles.successText}>{message}</Text> : null}<View style={styles.focusActions}><Button disabled={busy} title={busy ? "Saving..." : "Save profile"} onPress={saveProfile} /></View></View>
+    <View style={styles.placeholderCard}><Text style={styles.sectionTitle}>Notifications</Text><Text style={styles.mutedText}>Local task reminders: {permission}</Text><View style={styles.focusActions}><Button title={permission === "Enabled" ? "Permission enabled" : "Enable notifications"} onPress={requestNotifications} /></View></View>
+    <View style={styles.placeholderCard}><Text style={styles.sectionTitle}>Offline data</Text><Text style={styles.mutedText}>Tasks and notes can be stored locally on this device. Task changes sync when Internet returns; notes currently remain device-only.</Text><Text style={styles.mutedText}>StudyFlow Mobile v1.0.0</Text></View>
+  </View>;
+}
+
 function AuthScreen({ mode, setMode, onAuthenticated }) {
   const isSignup = mode === "signup";
   const [name, setName] = useState("");
@@ -508,7 +546,7 @@ function HomeScreen({ auth, onLogout }) {
       {activeView === "insights" ? <InsightsPanel token={auth.token} /> : null}
       {activeView === "planner" ? <PlannerPanel tasks={tasks} token={auth.token} onSaved={handleSaved} /> : null}
       {activeView === "notes" ? <NotesPanel userId={auth.user?.id || auth.user?._id} /> : null}
-      {activeView === "settings" ? <View style={styles.placeholderCard}><Text style={styles.sectionTitle}>Settings</Text><Text style={styles.mutedText}>Account: {auth.user?.email || "signed in"}</Text></View> : null}
+      {activeView === "settings" ? <SettingsPanel auth={auth} /> : null}
     </ScrollView>
   </SafeAreaView>;
 }
