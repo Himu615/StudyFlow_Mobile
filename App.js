@@ -75,7 +75,7 @@ function DateTimePickerModal({ value, onChange, onClose }) {
   return <Modal animationType="slide" transparent visible onRequestClose={onClose}><View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(16,47,42,0.45)" }}><View style={{ maxHeight: "82%", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, backgroundColor: "#f5f6f1" }}><View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><Text style={{ color: "#17362f", fontSize: 20, fontWeight: "800" }}>Choose due date & time</Text><Pressable onPress={onClose}><Text style={styles.closeText}>Cancel</Text></Pressable></View><Text style={styles.label}>Calendar</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 18 }}>{days.map((day) => <Pressable key={day.key} onPress={() => setSelectedDate(day.key)} style={{ minWidth: 72, alignItems: "center", borderRadius: 14, paddingVertical: 11, backgroundColor: selectedDate === day.key ? "#11806b" : "#fff", borderWidth: 1, borderColor: selectedDate === day.key ? "#11806b" : "#dfe3dc" }}><Text style={{ color: selectedDate === day.key ? "#dff2e9" : "#7b8a83", fontSize: 12, fontWeight: "700" }}>{day.label}</Text><Text style={{ marginTop: 4, color: selectedDate === day.key ? "#fff" : "#17362f", fontWeight: "800" }}>{day.short}</Text></Pressable>)}</ScrollView><Text style={styles.label}>Time</Text><View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 18 }}>{times.map((time) => <Pressable key={time} onPress={() => setSelectedTime(time)} style={{ width: "23%", alignItems: "center", borderRadius: 10, paddingVertical: 10, backgroundColor: selectedTime === time ? "#dff2e9" : "#fff", borderWidth: 1, borderColor: selectedTime === time ? "#11806b" : "#dfe3dc" }}><Text style={{ color: selectedTime === time ? "#11806b" : "#62736b", fontWeight: "700" }}>{time}</Text></Pressable>)}</View><Button title={"Set " + selectedDate + " " + selectedTime} onPress={confirm} /></View></View></Modal>;
 }
 
-function TaskForm({ task, initialDueDate, token, onCancel, onSaved }) {
+function TaskForm({ task, initialDueDate, token, userId, onCancel, onSaved }) {
   const [title, setTitle] = useState(task?.title || "");
   const [priority, setPriority] = useState(task?.priority || "medium");
   const [minutes, setMinutes] = useState(String(task?.estimatedMinutes || 25));
@@ -100,6 +100,12 @@ function TaskForm({ task, initialDueDate, token, onCancel, onSaved }) {
       }, token);
       onSaved(data.task);
     } catch (requestError) {
+      if (userId) {
+        const localTask = { ...(task || {}), _id: task?._id || `local-${Date.now()}`, title: title.trim(), priority, estimatedMinutes, dueDate: dueDate || null, reminderMinutesBefore: reminder ? Number(reminder) : null, completed: task?.completed || false, offlinePending: true };
+        await enqueueSync(userId, task ? { type: "updateTask", id: task._id, patch: { title: localTask.title, priority, estimatedMinutes, dueDate: localTask.dueDate, reminderMinutesBefore: localTask.reminderMinutesBefore } } : { type: "createTask", task: localTask });
+        onSaved(localTask);
+        return;
+      }
       setError(requestError.message);
     } finally {
       setBusy(false);
@@ -189,6 +195,7 @@ function StudyStructure({ token }) {
 
 function FocusPanel({ token, tasks = [], isFocusPage = false, onOpenFocus }) {
   const [running, setRunning] = useState(false);
+  const [paused, setPaused] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const [durationSeconds, setDurationSeconds] = useState(25 * 60);
   const [selectedTask, setSelectedTask] = useState(null);
@@ -207,7 +214,22 @@ function FocusPanel({ token, tasks = [], isFocusPage = false, onOpenFocus }) {
     setSeconds(totalSeconds);
     setMessage("");
     setRunning(true);
+    setPaused(false);
     intervalRef.current = setInterval(() => setSeconds((current) => Math.max(0, current - 1)), 1000);
+  }
+
+  function togglePause() {
+    if (running) {
+      clearInterval(intervalRef.current);
+      setRunning(false);
+      setPaused(true);
+      return;
+    }
+    if (paused) {
+      setRunning(true);
+      setPaused(false);
+      intervalRef.current = setInterval(() => setSeconds((current) => Math.max(0, current - 1)), 1000);
+    }
   }
 
   async function stop() {
@@ -224,12 +246,13 @@ function FocusPanel({ token, tasks = [], isFocusPage = false, onOpenFocus }) {
     }
     setSeconds(0);
     setStartedAt(null);
+    setPaused(false);
   }
 
   const focusTasks = tasks.filter((task) => !task.completed && (!task.dueDate || localDateKey(task.dueDate) === focusDate));
   const minutes = String(Math.floor(seconds / 60)).padStart(2, "0");
   const remainingSeconds = String(seconds % 60).padStart(2, "0");
-  return <View style={{ marginTop: 16, borderRadius: 24, padding: 20, backgroundColor: "#fff", borderWidth: 1, borderColor: "#cce4e5" }}><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Focus session</Text><Text style={{ color: "#123d46", fontSize: 30, fontWeight: "800" }}>{minutes}:{remainingSeconds}</Text></View><Text style={styles.mutedText}>Choose a date and task; the timer uses its estimated minutes.</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 10 }}>{Array.from({ length: 7 }, (_, index) => { const date = new Date(); date.setHours(0, 0, 0, 0); date.setDate(date.getDate() + index); const key = localDateKey(date); return <Pressable key={key} onPress={() => { setFocusDate(key); setSelectedTask(null); }} style={{ borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: focusDate === key ? "#11a889" : "#f1f8f8" }}><Text style={{ color: focusDate === key ? "#fff" : "#66818a", fontSize: 11, fontWeight: "700" }}>{date.toLocaleDateString(undefined, { weekday: "short", day: "numeric" })}</Text></Pressable>; })}</ScrollView>{isFocusPage ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>{focusTasks.slice(0, 12).map((task) => <Pressable key={task._id} disabled={running} onPress={() => { setSelectedTask(task); setDurationSeconds(Math.max(60, (Number(task.estimatedMinutes) || 25) * 60)); setSeconds(Math.max(60, (Number(task.estimatedMinutes) || 25) * 60)); }} style={{ maxWidth: 180, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: selectedTask?._id === task._id ? "#dff2e9" : "#f1f8f8" }}><Text numberOfLines={1} style={{ color: selectedTask?._id === task._id ? "#087b82" : "#123d46", fontWeight: "700" }}>{task.title}</Text><Text style={{ marginTop: 3, color: selectedTask?._id === task._id ? "#087b82" : "#66818a", fontSize: 11 }}>{task.estimatedMinutes || 25} min</Text></Pressable>)}</ScrollView> : null}<View style={styles.focusActions}>{running ? <Button title="Stop and save" onPress={stop} /> : isFocusPage ? <Button title={selectedTask ? "Start task focus" : "Start 25-minute focus"} onPress={start} /> : <Button title="Open Focus" onPress={onOpenFocus} />}</View>{message ? <Text style={styles.successText}>{message}</Text> : null}</View>;
+  return <View style={{ marginTop: 16, borderRadius: 24, padding: 20, backgroundColor: "#fff", borderWidth: 1, borderColor: "#cce4e5" }}><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Focus session</Text><Text style={{ color: "#123d46", fontSize: 30, fontWeight: "800" }}>{minutes}:{remainingSeconds}</Text></View><Text style={styles.mutedText}>Choose a date and task; the timer uses its estimated minutes.</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 10 }}>{Array.from({ length: 7 }, (_, index) => { const date = new Date(); date.setHours(0, 0, 0, 0); date.setDate(date.getDate() + index); const key = localDateKey(date); return <Pressable key={key} onPress={() => { setFocusDate(key); setSelectedTask(null); }} style={{ borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: focusDate === key ? "#11a889" : "#f1f8f8" }}><Text style={{ color: focusDate === key ? "#fff" : "#66818a", fontSize: 11, fontWeight: "700" }}>{date.toLocaleDateString(undefined, { weekday: "short", day: "numeric" })}</Text></Pressable>; })}</ScrollView>{isFocusPage ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>{focusTasks.slice(0, 12).map((task) => <Pressable key={task._id} disabled={running} onPress={() => { setSelectedTask(task); setDurationSeconds(Math.max(60, (Number(task.estimatedMinutes) || 25) * 60)); setSeconds(Math.max(60, (Number(task.estimatedMinutes) || 25) * 60)); }} style={{ maxWidth: 180, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: selectedTask?._id === task._id ? "#dff2e9" : "#f1f8f8" }}><Text numberOfLines={1} style={{ color: selectedTask?._id === task._id ? "#087b82" : "#123d46", fontWeight: "700" }}>{task.title}</Text><Text style={{ marginTop: 3, color: selectedTask?._id === task._id ? "#087b82" : "#66818a", fontSize: 11 }}>{task.estimatedMinutes || 25} min</Text></Pressable>)}</ScrollView> : null}<View style={styles.focusActions}>{running || paused ? <View style={{ flexDirection: "row", gap: 9 }}><View style={{ flex: 1 }}><Button title={running ? "Pause" : "Resume"} onPress={togglePause} /></View><View style={{ flex: 1 }}><Button title="Stop and save" onPress={stop} /></View></View> : isFocusPage ? <Button title={selectedTask ? "Start task focus" : "Start 25-minute focus"} onPress={start} /> : <Button title="Open Focus" onPress={onOpenFocus} />}</View>{message ? <Text style={styles.successText}>{message}</Text> : null}</View>;
 }
 
 function HomeFocusCard({ tasks, onOpenFocus }) {
@@ -313,7 +336,7 @@ function localDateKey(value = new Date()) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-function PlannerPanel({ tasks, token, onSaved }) {
+function PlannerPanel({ tasks, token, userId, onSaved }) {
   const [selectedDate, setSelectedDate] = useState(localDateKey());
   const [showForm, setShowForm] = useState(false);
   const [period, setPeriod] = useState("Today");
@@ -332,7 +355,7 @@ function PlannerPanel({ tasks, token, onSaved }) {
     <Text style={{ marginTop: 20, color: "#123d46", fontSize: 16, fontWeight: "800" }}>{new Date(selectedDate + "T12:00:00").toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}</Text>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.dayRow, { paddingTop: 10 }]}>{days.map((day) => <Pressable key={day.key} onPress={() => { setSelectedDate(day.key); setShowForm(false); }} style={[styles.dayCard, selectedDate === day.key && { backgroundColor: "#11a889", borderColor: "#11a889" }]}><Text style={[styles.dayLabel, selectedDate === day.key && styles.dayTextActive]}>{day.label}</Text><Text style={[styles.dayDate, selectedDate === day.key && styles.dayTextActive]}>{day.short}</Text></Pressable>)}</ScrollView>
     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 4, marginBottom: 13 }}><View><Text style={styles.mutedText}>Planned time</Text><Text style={styles.summaryValue}>{totalMinutes} min</Text></View><View><Text style={styles.mutedText}>Completed</Text><Text style={styles.summaryValue}>{completedCount}/{plannedTasks.length}</Text></View><Pressable onPress={() => setShowForm(true)} style={[styles.addButton, { borderRadius: 20 }]}><Text style={styles.addButtonText}>+ Add task</Text></Pressable></View>
-    {showForm ? <TaskForm initialDueDate={`${selectedDate}T09:00`} token={token} onCancel={() => setShowForm(false)} onSaved={(task) => { onSaved(task); setShowForm(false); }} /> : null}
+    {showForm ? <TaskForm initialDueDate={`${selectedDate}T09:00`} token={token} userId={userId} onCancel={() => setShowForm(false)} onSaved={(task) => { onSaved(task); setShowForm(false); }} /> : null}
     {plannedTasks.length === 0 ? <View style={styles.emptyCard}><Text style={styles.emptyTitle}>Nothing planned</Text><Text style={styles.emptyText}>Add a task for this date to start planning.</Text></View> : plannedTasks.map((task) => <View key={task._id} style={{ flexDirection: "row", alignItems: "flex-start", marginBottom: 10, paddingVertical: 12 }}><View style={{ alignItems: "center", width: 24 }}><View style={[styles.checkbox, { width: 16, height: 16, marginRight: 0 }, task.completed && styles.checkboxDone]}>{task.completed ? <Text style={{ color: "#fff", fontSize: 10 }}>✓</Text> : null}</View><View style={{ width: 2, flex: 1, minHeight: 28, marginTop: 5, backgroundColor: "#c9e8e2" }} /></View><View style={{ flex: 1, marginLeft: 10, borderRadius: 14, padding: 14, backgroundColor: "#fff", borderWidth: 1, borderColor: "#d7e9e8" }}><View style={{ flexDirection: "row", justifyContent: "space-between" }}><Text style={[styles.taskTitle, task.completed && styles.taskCompleted]}>{task.title}</Text><Text style={{ color: task.priority === "high" ? "#d35e53" : "#d88d2c", fontSize: 10, fontWeight: "700" }}>{task.priority || "medium"}</Text></View><Text style={styles.taskMeta}>{task.estimatedMinutes || 0} min {task.dueDate ? `· ${new Date(task.dueDate).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}</Text>{task.reminderMinutesBefore ? <Text style={{ marginTop: 7, color: "#087b82", fontSize: 10 }}>Reminder {task.reminderMinutesBefore} min before</Text> : null}</View></View>)}
   </View>;
 }
@@ -500,6 +523,7 @@ function HomeScreen({ auth, onLogout }) {
     const remaining = [];
     for (const operation of queue) {
       try {
+        if (operation.type === "createTask") await apiRequest("/tasks", { method: "POST", body: JSON.stringify({ title: operation.task.title, priority: operation.task.priority, estimatedMinutes: operation.task.estimatedMinutes, dueDate: operation.task.dueDate, reminderMinutesBefore: operation.task.reminderMinutesBefore }) }, auth.token);
         if (operation.type === "updateTask") await apiRequest(`/tasks/${operation.id}`, { method: "PATCH", body: JSON.stringify(operation.patch) }, auth.token);
         if (operation.type === "deleteTask") await apiRequest(`/tasks/${operation.id}`, { method: "DELETE" }, auth.token);
       } catch { remaining.push(operation); }
@@ -568,7 +592,7 @@ function HomeScreen({ auth, onLogout }) {
     <ScrollView contentContainerStyle={styles.homeContent}>
       {activeView === "today" ? <><Text style={styles.greeting}>Hi, {auth.user?.name || "student"} 👋</Text><Text style={styles.homeSubtitle}>Let’s make today count.</Text><HomeFocusCard tasks={tasks} onOpenFocus={() => setActiveView("focus")} /><View style={{ marginTop: 20, borderRadius: 18, padding: 17, backgroundColor: "#10a889" }}><View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}><View><Text style={{ color: "#d9fff7", fontSize: 12 }}>Your learning health</Text><Text style={{ marginTop: 4, color: "#fff", fontSize: 24, fontWeight: "800" }}>Excellent</Text><Text style={{ marginTop: 3, color: "#d9fff7", fontSize: 11 }}>Keep your study streak going</Text></View><Text style={{ color: "#fff", fontSize: 30, fontWeight: "800" }}>82%</Text></View></View><Text style={[styles.sectionTitle, { marginTop: 22 }]}>Quick actions</Text><View style={{ flexDirection: "row", gap: 9, marginTop: 10 }}><Pressable onPress={() => { setEditingTask(null); setShowForm(true); }} style={{ flex: 1, alignItems: "center", borderRadius: 14, paddingVertical: 13, backgroundColor: "#fff" }}><Text style={{ color: "#087b82", fontSize: 20 }}>＋</Text><Text style={{ marginTop: 3, color: "#123d46", fontSize: 11, fontWeight: "700" }}>Task</Text></Pressable><Pressable onPress={() => setActiveView("focus")} style={{ flex: 1, alignItems: "center", borderRadius: 14, paddingVertical: 13, backgroundColor: "#fff" }}><Text style={{ color: "#5874ca", fontSize: 20 }}>◷</Text><Text style={{ marginTop: 3, color: "#123d46", fontSize: 11, fontWeight: "700" }}>Focus</Text></Pressable><Pressable onPress={() => setActiveView("planner")} style={{ flex: 1, alignItems: "center", borderRadius: 14, paddingVertical: 13, backgroundColor: "#fff" }}><Text style={{ color: "#d88d2c", fontSize: 20 }}>▤</Text><Text style={{ marginTop: 3, color: "#123d46", fontSize: 11, fontWeight: "700" }}>Planner</Text></Pressable><Pressable onPress={() => setActiveView("insights")} style={{ flex: 1, alignItems: "center", borderRadius: 14, paddingVertical: 13, backgroundColor: "#fff" }}><Text style={{ color: "#11a889", fontSize: 20 }}>▥</Text><Text style={{ marginTop: 3, color: "#123d46", fontSize: 11, fontWeight: "700" }}>Insights</Text></Pressable></View></> : null}
       {showTasks ? <><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Your tasks</Text><View style={styles.sectionActions}><Pressable onPress={loadTasks}><Text style={styles.refreshText}>Refresh</Text></Pressable><Pressable onPress={() => { setEditingTask(null); setShowForm(true); }} style={styles.addButton}><Text style={styles.addButtonText}>+ Add</Text></Pressable></View></View>
-        {showForm ? <TaskForm task={editingTask} token={auth.token} onCancel={() => { setShowForm(false); setEditingTask(null); }} onSaved={handleSaved} /> : null}
+        {showForm ? <TaskForm task={editingTask} token={auth.token} userId={auth.user?.id || auth.user?._id} onCancel={() => { setShowForm(false); setEditingTask(null); }} onSaved={handleSaved} /> : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
         {loadingTasks ? <View style={styles.taskLoading}><ActivityIndicator color="#11806b" /><Text style={styles.loadingText}>Loading tasks...</Text></View> : null}
         {!loadingTasks && tasks.length === 0 ? <View style={styles.emptyCard}><Text style={styles.emptyTitle}>No tasks yet</Text><Text style={styles.emptyText}>Your tasks will appear here once you create them.</Text></View> : null}
@@ -577,7 +601,7 @@ function HomeScreen({ auth, onLogout }) {
       {showStructure ? <StudyStructure token={auth.token} /> : null}
       {showFocus ? <FocusPanel token={auth.token} tasks={tasks} isFocusPage={activeView === "focus"} onOpenFocus={() => setActiveView("focus")} /> : null}
       {activeView === "insights" ? <InsightsPanel token={auth.token} /> : null}
-      {activeView === "planner" ? <PlannerPanel tasks={tasks} token={auth.token} onSaved={handleSaved} /> : null}
+      {activeView === "planner" ? <PlannerPanel tasks={tasks} token={auth.token} userId={auth.user?.id || auth.user?._id} onSaved={handleSaved} /> : null}
       {activeView === "notes" ? <NotesPanel userId={auth.user?.id || auth.user?._id} /> : null}
       {activeView === "settings" ? <SettingsPanel auth={auth} /> : null}
     </ScrollView>
