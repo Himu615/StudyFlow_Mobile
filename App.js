@@ -441,10 +441,10 @@ function AuthScreen({ mode, setMode, onAuthenticated }) {
     }
   }
 
-  return <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.flex}><ScrollView contentContainerStyle={styles.authContainer} keyboardShouldPersistTaps="handled">
-    <View style={styles.brandMark}><Text style={styles.brandMarkText}>S</Text></View>
-    <Text style={styles.brand}>StudyFlow</Text>
-    <Text style={styles.subtitle}>{isSignup ? "Build a better study routine." : "Welcome back, student."}</Text>
+  return <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.flex}><ScrollView contentContainerStyle={[styles.authContainer, { backgroundColor: "#e5f6f5" }]} keyboardShouldPersistTaps="handled">
+    <View style={[styles.brandMark, { backgroundColor: "#c9f3ec", borderRadius: 28 }]}><Text style={[styles.brandMarkText, { color: "#087b82" }]}>S</Text></View>
+    <Text style={[styles.brand, { color: "#123d46" }]}>StudyFlow</Text>
+    <Text style={[styles.subtitle, { color: "#66818a" }]}>{isSignup ? "Build a better study routine." : "Welcome back, student."}</Text>
     <View style={styles.card}>
       <Text style={styles.heading}>{isSignup ? "Create your account" : "Sign in"}</Text>
       <Text style={styles.cardSubtitle}>{isSignup ? "Start organizing your study goals." : "Continue your study journey."}</Text>
@@ -557,13 +557,10 @@ function HomeScreen({ auth, onLogout }) {
   const showStructure = activeView === "today" || activeView === "goals" || activeView === "subjects";
   const showFocus = activeView === "today" || activeView === "focus";
 
-  return <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
-    <View style={styles.homeHeader}><View><Text style={styles.smallEyebrow}>STUDYFLOW</Text><Text style={styles.homeTitle}>{viewTitle}</Text></View><Pressable onPress={onLogout} style={styles.logoutButton}><Text style={styles.logoutText}>Log out</Text></Pressable></View>
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.navBar, { paddingHorizontal: 10, gap: 6 }]}>
-      {NAV_ITEMS.map((item) => <Pressable key={item} onPress={() => setActiveView(item)} style={[styles.navItem, activeView === item && styles.navItemActive]}><Text style={[styles.navItemText, activeView === item && styles.navItemTextActive]}>{item}</Text></Pressable>)}
-    </ScrollView>
+  return <SafeAreaView style={[styles.screen, { backgroundColor: "#e5f6f5" }]} edges={["top", "left", "right"]}>
+    <View style={[styles.homeHeader, { backgroundColor: "#e5f6f5", borderBottomWidth: 0, paddingBottom: 8 }]}><View><Text style={styles.smallEyebrow}>STUDYFLOW</Text><Text style={styles.homeTitle}>{viewTitle}</Text></View><Pressable onPress={onLogout} style={[styles.logoutButton, { backgroundColor: "#ffffff" }]}><Text style={styles.logoutText}>Log out</Text></Pressable></View>
     <ScrollView contentContainerStyle={styles.homeContent}>
-      {activeView === "today" ? <><Text style={styles.greeting}>Hi, {auth.user?.name || "student"} 👋</Text><Text style={styles.homeSubtitle}>Keep moving forward with one task at a time.</Text></> : null}
+      {activeView === "today" ? <><Text style={styles.greeting}>Hi, {auth.user?.name || "student"} 👋</Text><Text style={styles.homeSubtitle}>Let’s make today count.</Text><View style={{ marginTop: 18, borderRadius: 18, padding: 17, backgroundColor: "#10a889" }}><View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}><View><Text style={{ color: "#d9fff7", fontSize: 12 }}>Your learning health</Text><Text style={{ marginTop: 4, color: "#fff", fontSize: 24, fontWeight: "800" }}>Excellent</Text><Text style={{ marginTop: 3, color: "#d9fff7", fontSize: 11 }}>Keep your study streak going</Text></View><Text style={{ color: "#fff", fontSize: 30, fontWeight: "800" }}>82%</Text></View></View><Text style={[styles.sectionTitle, { marginTop: 22 }]}>Quick actions</Text><View style={{ flexDirection: "row", gap: 9, marginTop: 10 }}><Pressable onPress={() => { setEditingTask(null); setShowForm(true); }} style={{ flex: 1, alignItems: "center", borderRadius: 14, paddingVertical: 13, backgroundColor: "#fff" }}><Text style={{ color: "#087b82", fontSize: 20 }}>＋</Text><Text style={{ marginTop: 3, color: "#123d46", fontSize: 11, fontWeight: "700" }}>Task</Text></Pressable><Pressable onPress={() => setActiveView("focus")} style={{ flex: 1, alignItems: "center", borderRadius: 14, paddingVertical: 13, backgroundColor: "#fff" }}><Text style={{ color: "#5874ca", fontSize: 20 }}>◷</Text><Text style={{ marginTop: 3, color: "#123d46", fontSize: 11, fontWeight: "700" }}>Focus</Text></Pressable><Pressable onPress={() => setActiveView("planner")} style={{ flex: 1, alignItems: "center", borderRadius: 14, paddingVertical: 13, backgroundColor: "#fff" }}><Text style={{ color: "#d88d2c", fontSize: 20 }}>▤</Text><Text style={{ marginTop: 3, color: "#123d46", fontSize: 11, fontWeight: "700" }}>Planner</Text></Pressable><Pressable onPress={() => setActiveView("insights")} style={{ flex: 1, alignItems: "center", borderRadius: 14, paddingVertical: 13, backgroundColor: "#fff" }}><Text style={{ color: "#11a889", fontSize: 20 }}>▥</Text><Text style={{ marginTop: 3, color: "#123d46", fontSize: 11, fontWeight: "700" }}>Insights</Text></Pressable></View></> : null}
       {showTasks ? <><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Your tasks</Text><View style={styles.sectionActions}><Pressable onPress={loadTasks}><Text style={styles.refreshText}>Refresh</Text></Pressable><Pressable onPress={() => { setEditingTask(null); setShowForm(true); }} style={styles.addButton}><Text style={styles.addButtonText}>+ Add</Text></Pressable></View></View>
         {showForm ? <TaskForm task={editingTask} token={auth.token} onCancel={() => { setShowForm(false); setEditingTask(null); }} onSaved={handleSaved} /> : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -577,6 +574,7 @@ function HomeScreen({ auth, onLogout }) {
       {activeView === "notes" ? <NotesPanel userId={auth.user?.id || auth.user?._id} /> : null}
       {activeView === "settings" ? <SettingsPanel auth={auth} /> : null}
     </ScrollView>
+    <View style={{ flexDirection: "row", justifyContent: "space-around", paddingTop: 9, paddingBottom: 8, backgroundColor: "#fff", borderTopWidth: 1, borderTopColor: "#d7e9e8" }}>{[{ key: "today", label: "Home", icon: "⌂" }, { key: "planner", label: "Planner", icon: "▤" }, { key: "focus", label: "Focus", icon: "◷" }, { key: "insights", label: "Insights", icon: "▥" }, { key: "settings", label: "Profile", icon: "○" }].map((item) => <Pressable key={item.key} onPress={() => setActiveView(item.key)} style={{ alignItems: "center", minWidth: 52 }}><Text style={{ color: activeView === item.key ? "#087b82" : "#8aa0a5", fontSize: 19 }}>{item.icon}</Text><Text style={{ marginTop: 2, color: activeView === item.key ? "#087b82" : "#8aa0a5", fontSize: 9, fontWeight: "700" }}>{item.label}</Text></Pressable>)}</View>
   </SafeAreaView>;
 }
 
