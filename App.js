@@ -739,7 +739,7 @@ function AuthScreen({ mode, setMode, onAuthenticated }) {
 function LaunchScreen({ onContinue, returningUser }) {
   useEffect(() => {
     if (!returningUser) return undefined;
-    const timer = setTimeout(onContinue, 2000);
+    const timer = setTimeout(onContinue, 1000);
     return () => clearTimeout(timer);
   }, [onContinue, returningUser]);
 
