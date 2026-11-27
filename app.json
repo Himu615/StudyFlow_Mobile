@@ -25,6 +25,14 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/31b82c27-3ce8-4cd1-ac20-7460be18fb73",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
     "plugins": [
       [
         "expo-splash-screen",
