@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Animated, AppState, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Animated, AppState, Image, KeyboardAvoidingView, Modal, NativeModules, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { StatusBar } from "expo-status-bar";
 import * as Notifications from "expo-notifications";
@@ -13,6 +13,7 @@ const TOKEN_KEY = "studyflow_token";
 const USER_KEY = "studyflow_user";
 const NOTIFICATION_KEY = "studyflow_task_notifications";
 const ALARM_CHANNEL_ID = "studyflow-task-alarms";
+const { StudyFlowAlarm } = NativeModules;
 const NAV_ITEMS = ["home", "planner", "today", "insights", "settings"];
 const PROFILE_PICTURE_KEY = "studyflow_profile_picture";
 
@@ -39,7 +40,11 @@ async function configureAlarmChannel() {
 async function scheduleTaskNotification(task) {
   const notificationMap = JSON.parse((await AsyncStorage.getItem(NOTIFICATION_KEY)) || "{}");
   if (task?._id && notificationMap[task._id]) {
-    await Notifications.cancelScheduledNotificationAsync(notificationMap[task._id]).catch(() => {});
+    if (Platform.OS === "android" && StudyFlowAlarm?.cancelAlarm && String(notificationMap[task._id]).startsWith("alarm:")) {
+      await StudyFlowAlarm.cancelAlarm(String(task._id)).catch(() => {});
+    } else {
+      await Notifications.cancelScheduledNotificationAsync(notificationMap[task._id]).catch(() => {});
+    }
     delete notificationMap[task._id];
     await AsyncStorage.setItem(NOTIFICATION_KEY, JSON.stringify(notificationMap));
   }
@@ -60,6 +65,12 @@ async function scheduleTaskNotification(task) {
       if (requestedExact && !requestedExact.granted) return;
     }
   }
+  if (Platform.OS === "android" && StudyFlowAlarm?.scheduleAlarm) {
+    const nativeIdentifier = await StudyFlowAlarm.scheduleAlarm(String(task._id), notificationDate.getTime(), task.title);
+    notificationMap[task._id] = nativeIdentifier;
+    await AsyncStorage.setItem(NOTIFICATION_KEY, JSON.stringify(notificationMap));
+    return;
+  }
   const identifier = await Notifications.scheduleNotificationAsync({
     content: { title: reminderMinutes ? "StudyFlow task reminder" : "StudyFlow task due", body: task.title, sound: "default", priority: Notifications.AndroidNotificationPriority.MAX, channelId: ALARM_CHANNEL_ID, data: { taskId: task._id } },
     trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: notificationDate, delivery: "alarmClock", channelId: ALARM_CHANNEL_ID },
@@ -71,7 +82,11 @@ async function scheduleTaskNotification(task) {
 async function cancelTaskNotification(taskId) {
   const notificationMap = JSON.parse((await AsyncStorage.getItem(NOTIFICATION_KEY)) || "{}");
   if (!notificationMap[taskId]) return;
-  await Notifications.cancelScheduledNotificationAsync(notificationMap[taskId]).catch(() => {});
+  if (Platform.OS === "android" && StudyFlowAlarm?.cancelAlarm && String(notificationMap[taskId]).startsWith("alarm:")) {
+    await StudyFlowAlarm.cancelAlarm(String(taskId)).catch(() => {});
+  } else {
+    await Notifications.cancelScheduledNotificationAsync(notificationMap[taskId]).catch(() => {});
+  }
   delete notificationMap[taskId];
   await AsyncStorage.setItem(NOTIFICATION_KEY, JSON.stringify(notificationMap));
 }
