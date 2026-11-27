@@ -544,7 +544,7 @@ function InsightsPanel({ token }) {
   </View>;
 }
 
-function SettingsPanel({ auth }) {
+function SettingsPanel({ auth, onProfileUpdated }) {
   const [name, setName] = useState(auth.user?.name || "");
   const [email, setEmail] = useState(auth.user?.email || "");
   const [permission, setPermission] = useState("Checking...");
@@ -582,6 +582,7 @@ function SettingsPanel({ auth }) {
       const data = await apiRequest("/auth/profile", { method: "PATCH", body: JSON.stringify({ name: name.trim(), email: email.trim().toLowerCase() }) }, auth.token);
       setName(data.user.name);
       setEmail(data.user.email);
+      onProfileUpdated?.(data.user);
       setMessage("Profile saved successfully.");
     } catch (requestError) { setError(requestError.message); }
     finally { setBusy(false); }
@@ -636,7 +637,7 @@ function AuthScreen({ mode, setMode, onAuthenticated }) {
   </ScrollView></KeyboardAvoidingView>;
 }
 
-function HomeScreen({ auth, onLogout }) {
+function HomeScreen({ auth, onLogout, onProfileUpdated }) {
   const [tasks, setTasks] = useState([]);
   const [loadingTasks, setLoadingTasks] = useState(true);
   const [error, setError] = useState("");
@@ -775,7 +776,7 @@ function HomeScreen({ auth, onLogout }) {
       {activeView === "insights" ? <InsightsPanel token={auth.token} /> : null}
       {activeView === "planner" ? <PlannerPanel tasks={tasks} token={auth.token} userId={auth.user?.id || auth.user?._id} onSaved={handleSaved} /> : null}
       {activeView === "notes" ? <NotesPanel userId={auth.user?.id || auth.user?._id} /> : null}
-      {activeView === "settings" ? <SettingsPanel auth={auth} /> : null}
+      {activeView === "settings" ? <SettingsPanel auth={auth} onProfileUpdated={onProfileUpdated} /> : null}
     </ScrollView>
     <View style={{ flexDirection: "row", justifyContent: "space-around", paddingTop: 10, paddingBottom: Platform.OS === "android" ? 14 : 18, minHeight: 74, backgroundColor: "#fff", borderTopWidth: 1, borderTopColor: "#d7e9e8" }}>{[{ key: "home", label: "Home", icon: "home-outline", color: "#087b82" }, { key: "planner", label: "Planner", icon: "calendar-outline", color: "#7657c7" }, { key: "today-detail", label: "Today", icon: "checkmark-circle-outline", color: "#e18a2a" }, { key: "insights", label: "Insights", icon: "bar-chart-outline", color: "#3d78c3" }, { key: "settings", label: "Profile", icon: "person-outline", color: "#db6c8f" }].map((item) => <Pressable key={item.key} onPress={() => setActiveView(item.key)} style={{ alignItems: "center", minWidth: 58 }}><Ionicons name={item.icon} size={25} color={activeView === item.key ? item.color : "#9ab0b5"} /><Text style={{ marginTop: 3, color: activeView === item.key ? item.color : "#8aa0a5", fontSize: 10, fontWeight: "800" }}>{item.label}</Text></Pressable>)}</View>
   </SafeAreaView>;
@@ -818,7 +819,7 @@ export default function App() {
   }
 
   if (loading) return <View style={styles.loading}><ActivityIndicator color="#11806b" size="large" /><Text style={styles.loadingText}>Loading StudyFlow...</Text></View>;
-  return <SafeAreaProvider><View style={styles.flex}><StatusBar style={auth ? "dark" : "light"} />{auth ? <HomeScreen auth={auth} onLogout={logout} /> : <AuthScreen mode={mode} setMode={setMode} onAuthenticated={setAuth} />}</View></SafeAreaProvider>;
+  return <SafeAreaProvider><View style={styles.flex}><StatusBar style={auth ? "dark" : "light"} />{auth ? <HomeScreen auth={auth} onLogout={logout} onProfileUpdated={(user) => setAuth((current) => ({ ...current, user }))} /> : <AuthScreen mode={mode} setMode={setMode} onAuthenticated={setAuth} />}</View></SafeAreaProvider>;
 }
 
 const styles = StyleSheet.create({
