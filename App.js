@@ -125,6 +125,7 @@ function TaskForm({ task, initialDueDate, token, userId, onCancel, onSaved }) {
     <Text style={styles.label}>Reminder</Text>
     <View style={styles.priorityRow}>{[["", "None"], ["5", "5 min"], ["15", "15 min"], ["30", "30 min"], ["60", "1 hour"], ["1440", "1 day"]].map(([value, label]) => <Pressable key={label} onPress={() => setReminder(value)} style={[styles.reminderButton, reminder === value && styles.priorityButtonActive]}><Text style={[styles.priorityText, reminder === value && styles.priorityTextActive]}>{label}</Text></Pressable>)}</View>
     <TextInput keyboardType="numeric" value={["", "5", "15", "30", "60", "1440"].includes(reminder) ? "" : reminder} onChangeText={(value) => setReminder(value.replace(/[^0-9]/g, ""))} placeholder="Or enter custom minutes" placeholderTextColor="#91a09a" style={styles.input} />
+    <Text style={[styles.mutedText, { marginTop: 6 }]}>{reminder ? `Reminder: ${reminder} minutes before due time` : "No reminder set"}</Text>
     {error ? <Text style={styles.error}>{error}</Text> : null}
     <Button disabled={busy} title={busy ? "Saving..." : task ? "Save changes" : "Add task"} onPress={submit} />
     {showDatePicker ? <DateTimePickerModal value={dueDate} onChange={setDueDate} onClose={() => setShowDatePicker(false)} /> : null}
