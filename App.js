@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Animated, AppState, Image, ImageBackground, KeyboardAvoidingView, Modal, NativeModules, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Animated, AppState, Image, ImageBackground, KeyboardAvoidingView, Linking, Modal, NativeModules, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { StatusBar } from "expo-status-bar";
 import * as Notifications from "expo-notifications";
 import * as ImagePicker from "expo-image-picker";
+import * as Application from "expo-application";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { apiRequest, getApiBaseUrl } from "./src/api";
@@ -16,6 +17,34 @@ const ALARM_CHANNEL_ID = "studyflow-task-alarms";
 const { StudyFlowAlarm } = NativeModules;
 const NAV_ITEMS = ["home", "planner", "today", "insights", "settings"];
 const PROFILE_PICTURE_KEY = "studyflow_profile_picture";
+const UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Himu615/StudyFlow_Mobile/main/update.json";
+const CURRENT_APP_VERSION = Application.nativeApplicationVersion || "1.0.0";
+
+function compareVersions(left, right) {
+  const a = String(left).split(".").map((part) => Number(part) || 0);
+  const b = String(right).split(".").map((part) => Number(part) || 0);
+  for (let index = 0; index < 3; index += 1) {
+    if ((a[index] || 0) !== (b[index] || 0)) return (a[index] || 0) - (b[index] || 0);
+  }
+  return 0;
+}
+
+async function checkForAppUpdate() {
+  try {
+    const response = await fetch(`${UPDATE_MANIFEST_URL}?t=${Date.now()}`);
+    if (!response.ok) return;
+    const manifest = await response.json();
+    if (!manifest.latestVersion || compareVersions(manifest.latestVersion, CURRENT_APP_VERSION) <= 0 || !manifest.apkUrl) return;
+    Alert.alert(
+      "New StudyFlow update",
+      `${manifest.latestVersion} is available with new features. Update now or continue using the current version?`,
+      [
+        { text: "Later", style: "cancel" },
+        { text: "Update now", onPress: () => Linking.openURL(manifest.apkUrl).catch(() => {}) },
+      ],
+    );
+  } catch { /* Update checks are best-effort and must never block app startup. */ }
+}
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({ shouldShowAlert: true, shouldPlaySound: true, shouldSetBadge: false }),
@@ -883,6 +912,7 @@ export default function App() {
 
   useEffect(() => {
     configureAlarmChannel();
+    checkForAppUpdate();
     async function restoreSession() {
       try {
         const token = await AsyncStorage.getItem(TOKEN_KEY);
