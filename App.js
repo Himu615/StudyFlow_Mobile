@@ -551,11 +551,17 @@ function HomeScreen({ auth, onLogout }) {
     const queue = await readSyncQueue(userId);
     if (!queue.length) return;
     const remaining = [];
+    const idMap = {};
     for (const operation of queue) {
       try {
-        if (operation.type === "createTask") await apiRequest("/tasks", { method: "POST", body: JSON.stringify({ title: operation.task.title, priority: operation.task.priority, estimatedMinutes: operation.task.estimatedMinutes, dueDate: operation.task.dueDate, reminderMinutesBefore: operation.task.reminderMinutesBefore }) }, auth.token);
-        if (operation.type === "updateTask") await apiRequest(`/tasks/${operation.id}`, { method: "PATCH", body: JSON.stringify(operation.patch) }, auth.token);
-        if (operation.type === "deleteTask") await apiRequest(`/tasks/${operation.id}`, { method: "DELETE" }, auth.token);
+        if (operation.type === "createTask") {
+          const data = await apiRequest("/tasks", { method: "POST", body: JSON.stringify({ title: operation.task.title, priority: operation.task.priority, estimatedMinutes: operation.task.estimatedMinutes, dueDate: operation.task.dueDate, reminderMinutesBefore: operation.task.reminderMinutesBefore }) }, auth.token);
+          if (operation.task._id && data.task?._id) idMap[operation.task._id] = data.task._id;
+          if (operation.task._id) await cancelTaskNotification(operation.task._id);
+          await scheduleTaskNotification(data.task).catch(() => {});
+        }
+        if (operation.type === "updateTask") await apiRequest(`/tasks/${idMap[operation.id] || operation.id}`, { method: "PATCH", body: JSON.stringify(operation.patch) }, auth.token);
+        if (operation.type === "deleteTask") await apiRequest(`/tasks/${idMap[operation.id] || operation.id}`, { method: "DELETE" }, auth.token);
       } catch { remaining.push(operation); }
     }
     await writeSyncQueue(userId, remaining);
