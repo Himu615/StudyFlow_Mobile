@@ -35,6 +35,12 @@
         }
       ],
       "expo-font"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "31b82c27-3ce8-4cd1-ac20-7460be18fb73"
+      }
+    },
+    "owner": "himu615"
   }
 }
