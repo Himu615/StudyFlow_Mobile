@@ -4,7 +4,7 @@
     "slug": "studyflow-mobile",
     "version": "1.0.1",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+  "icon": "./assets/studyflow.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true
