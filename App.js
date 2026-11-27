@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, AppState, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Animated, AppState, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { StatusBar } from "expo-status-bar";
 import * as Notifications from "expo-notifications";
+import * as ImagePicker from "expo-image-picker";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { apiRequest, getApiBaseUrl } from "./src/api";
 import { enqueueSync, loadTaskCache, readSyncQueue, saveTaskCache, writeSyncQueue } from "./src/offline";
@@ -10,7 +11,8 @@ import { enqueueSync, loadTaskCache, readSyncQueue, saveTaskCache, writeSyncQueu
 const TOKEN_KEY = "studyflow_token";
 const USER_KEY = "studyflow_user";
 const NOTIFICATION_KEY = "studyflow_task_notifications";
-const NAV_ITEMS = ["today", "tasks", "planner", "goals", "subjects", "focus", "insights", "notes", "settings"];
+const NAV_ITEMS = ["home", "planner", "today", "insights", "settings"];
+const PROFILE_PICTURE_KEY = "studyflow_profile_picture";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({ shouldShowAlert: true, shouldPlaySound: true, shouldSetBadge: false }),
@@ -261,6 +263,14 @@ function HomeFocusCard({ tasks, onOpenFocus }) {
   return <View style={{ marginTop: 18, borderRadius: 24, padding: 19, backgroundColor: "#10a889" }}><View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}><View><Text style={{ color: "#fff", fontSize: 20, fontWeight: "800" }}>Focus Timer</Text><Text style={{ marginTop: 3, color: "#f1ebff", fontSize: 13 }}>Stay productive</Text></View><Pressable onPress={onOpenFocus} style={{ alignItems: "center", justifyContent: "center", width: 42, height: 42, borderRadius: 21, backgroundColor: "rgba(255,255,255,0.25)" }}><Text style={{ color: "#fff", fontSize: 21 }}>▶</Text></Pressable></View><Text style={{ marginTop: 20, color: "#fff", fontSize: 38, fontWeight: "800", textAlign: "center" }}>25:00</Text><Text style={{ color: "#f1ebff", fontSize: 13, textAlign: "center" }}>Pomodoro session</Text><View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", marginTop: 20 }}><Text style={{ color: "#fff", fontSize: 12 }}>Today: <Text style={{ fontWeight: "800" }}>{completedMinutes}m</Text></Text><Text style={{ color: "#f1ebff", fontSize: 19, letterSpacing: 4 }}>•••</Text></View>{nextTask ? <Text numberOfLines={1} style={{ marginTop: 9, color: "#f1ebff", fontSize: 11 }}>Next: {nextTask.title}</Text> : null}</View>;
 }
 
+function TodayPanel({ tasks, onAddTask, onOpenFocus }) {
+  const today = localDateKey();
+  const todayTasks = tasks.filter((task) => localDateKey(task.dueDate || task.createdAt) === today);
+  const completed = todayTasks.filter((task) => task.completed).length;
+  const studyMinutes = todayTasks.filter((task) => task.completed).reduce((sum, task) => sum + (Number(task.estimatedMinutes) || 0), 0);
+  return <View><View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}><View><Text style={styles.sectionTitle}>Today</Text><Text style={[styles.plannerIntro, { marginTop: 5, marginBottom: 0 }]}>Plan your day and keep your progress moving.</Text></View><Pressable onPress={onAddTask} style={[styles.addButton, { borderRadius: 22 }]}><Text style={styles.addButtonText}>＋ Add task</Text></Pressable></View><View style={{ flexDirection: "row", gap: 8, marginTop: 20 }}><View style={{ flex: 1, borderRadius: 14, padding: 13, backgroundColor: "#fff" }}><Text style={styles.mutedText}>Today’s tasks</Text><Text style={styles.summaryValue}>{todayTasks.length}</Text><Text style={styles.taskMeta}>Scheduled today</Text></View><View style={{ flex: 1, borderRadius: 14, padding: 13, backgroundColor: "#fff" }}><Text style={styles.mutedText}>Completed</Text><Text style={styles.summaryValue}>{completed}</Text><Text style={styles.taskMeta}>Completed today</Text></View></View><View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}><View style={{ flex: 1, borderRadius: 14, padding: 13, backgroundColor: "#fff" }}><Text style={styles.mutedText}>Pending</Text><Text style={styles.summaryValue}>{Math.max(0, todayTasks.length - completed)}</Text><Text style={styles.taskMeta}>Pending today</Text></View><View style={{ flex: 1, borderRadius: 14, padding: 13, backgroundColor: "#fff" }}><Text style={styles.mutedText}>Study time</Text><Text style={styles.summaryValue}>{studyMinutes}m</Text><Text style={styles.taskMeta}>Recorded today</Text></View></View><View style={{ marginTop: 18, borderRadius: 18, padding: 17, backgroundColor: "#fff", borderWidth: 1, borderColor: "#d7e9e8" }}><Text style={{ color: "#087b82", fontSize: 12, fontWeight: "800" }}>TODAY’S WORK</Text><Text style={[styles.sectionTitle, { marginTop: 6 }]}>Task focus</Text>{todayTasks.length === 0 ? <View style={{ marginTop: 14, alignItems: "center", borderRadius: 14, padding: 24, backgroundColor: "#f4f7f6" }}><Text style={styles.emptyText}>No tasks planned for today.</Text></View> : todayTasks.map((task) => <View key={task._id} style={{ marginTop: 10, borderRadius: 12, padding: 12, backgroundColor: task.completed ? "#e5f7f3" : "#f4f7f6" }}><Text style={[styles.taskTitle, task.completed && styles.taskCompleted]}>{task.title}</Text><Text style={styles.taskMeta}>{task.estimatedMinutes || 0} min {task.dueDate ? `· ${new Date(task.dueDate).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}</Text></View>)}</View><View style={{ marginTop: 16, borderRadius: 18, padding: 17, backgroundColor: "#e5f7f3" }}><Text style={{ color: "#087b82", fontSize: 12, fontWeight: "800" }}>QUICK FOCUS</Text><Text style={[styles.sectionTitle, { marginTop: 6 }]}>Ready to study?</Text><Text style={styles.mutedText}>Start a focused timer for one of today’s tasks.</Text><Pressable onPress={onOpenFocus} style={[styles.addButton, { marginTop: 14, alignItems: "center", borderRadius: 12 }]}><Text style={styles.addButtonText}>Open Focus</Text></Pressable></View></View>;
+}
+
 const notesStorageKey = (userId) => `studyflow_notes_${userId || "current"}`;
 
 function NotesPanel({ userId }) {
@@ -361,7 +371,14 @@ function PlannerPanel({ tasks, token, userId, onSaved }) {
 }
 
 function TaskActivityChart({ days, maxCount }) {
-  return <View style={styles.chartCard}><Text style={styles.sectionTitle}>Tasks added vs completed</Text><Text style={styles.mutedText}>Added / completed per day</Text>{days.map((day) => <View key={day.date} style={{ marginTop: 14 }}><View style={styles.subjectLine}><Text style={styles.chartLabel}>{day.date.slice(5)}</Text><Text style={styles.chartValue}>{day.added} / {day.completed}</Text></View><View style={{ flexDirection: "row", gap: 6, marginTop: 5 }}><View style={{ flex: 1, height: 8, overflow: "hidden", borderRadius: 8, backgroundColor: "#edf1ed" }}><View style={{ width: (Math.max(3, (day.added / maxCount) * 100)) + "%", height: "100%", borderRadius: 8, backgroundColor: "#9ac7b6" }} /></View><View style={{ flex: 1, height: 8, overflow: "hidden", borderRadius: 8, backgroundColor: "#edf1ed" }}><View style={{ width: (day.completed ? Math.max(3, (day.completed / maxCount) * 100) : 0) + "%", height: "100%", borderRadius: 8, backgroundColor: "#11806b" }} /></View></View></View>)}</View>;
+  return <View style={styles.chartCard}><Text style={styles.sectionTitle}>Tasks added vs completed</Text><Text style={styles.mutedText}>Added / completed per day</Text>{days.map((day) => <View key={day.date} style={{ marginTop: 14 }}><View style={styles.subjectLine}><Text style={styles.chartLabel}>{day.date.slice(5)}</Text><Text style={styles.chartValue}>{day.added} / {day.completed}</Text></View><View style={{ flexDirection: "row", gap: 6, marginTop: 5 }}><AnimatedBar percent={Math.max(3, (day.added / maxCount) * 100)} color="#9ac7b6" /><AnimatedBar percent={day.completed ? Math.max(3, (day.completed / maxCount) * 100) : 0} color="#11806b" /></View></View>)}</View>;
+}
+
+function AnimatedBar({ percent, color }) {
+  const progress = useRef(new Animated.Value(0)).current;
+  useEffect(() => { Animated.timing(progress, { toValue: percent, duration: 650, useNativeDriver: false }).start(); }, [percent]);
+  const width = progress.interpolate({ inputRange: [0, 100], outputRange: ["0%", "100%"] });
+  return <View style={{ flex: 1, height: 8, overflow: "hidden", borderRadius: 8, backgroundColor: "#edf1ed" }}><Animated.View style={{ width, height: "100%", borderRadius: 8, backgroundColor: color }} /></View>;
 }
 
 function InsightsPanel({ token }) {
@@ -415,10 +432,22 @@ function SettingsPanel({ auth }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [profilePicture, setProfilePicture] = useState(null);
 
   useEffect(() => {
+    AsyncStorage.getItem(`${PROFILE_PICTURE_KEY}_${auth.user?.id || auth.user?._id || "current"}`).then(setProfilePicture).catch(() => {});
     Notifications.getPermissionsAsync().then((result) => setPermission(result.granted ? "Enabled" : "Not enabled")).catch(() => setPermission("Unavailable"));
-  }, []);
+  }, [auth.user]);
+
+  async function chooseProfilePicture() {
+    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permissionResult.granted) return setError("Photo library permission is required.");
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [1, 1], quality: 0.8 });
+    if (result.canceled || !result.assets?.[0]?.uri) return;
+    const uri = result.assets[0].uri;
+    setProfilePicture(uri);
+    await AsyncStorage.setItem(`${PROFILE_PICTURE_KEY}_${auth.user?.id || auth.user?._id || "current"}`, uri);
+  }
 
   async function requestNotifications() {
     const result = await Notifications.requestPermissionsAsync();
@@ -440,7 +469,7 @@ function SettingsPanel({ auth }) {
   }
 
   return <View>
-    <View style={styles.placeholderCard}><Text style={styles.sectionTitle}>Profile</Text><Text style={styles.label}>Name</Text><TextInput value={name} onChangeText={setName} style={styles.input} /><Text style={styles.label}>Email</Text><TextInput autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} style={styles.input} />{error ? <Text style={styles.error}>{error}</Text> : null}{message ? <Text style={styles.successText}>{message}</Text> : null}<View style={styles.focusActions}><Button disabled={busy} title={busy ? "Saving..." : "Save profile"} onPress={saveProfile} /></View></View>
+    <View style={styles.placeholderCard}><Text style={styles.sectionTitle}>Profile</Text><View style={{ alignItems: "center", marginBottom: 14 }}>{profilePicture ? <Image source={{ uri: profilePicture }} style={{ width: 76, height: 76, borderRadius: 38 }} /> : <View style={{ alignItems: "center", justifyContent: "center", width: 76, height: 76, borderRadius: 38, backgroundColor: "#dff2e9" }}><Text style={{ color: "#087b82", fontSize: 22, fontWeight: "800" }}>{(name || "S").slice(0, 2).toUpperCase()}</Text></View>}<Pressable onPress={chooseProfilePicture} style={{ marginTop: 8 }}><Text style={styles.refreshText}>{profilePicture ? "Change profile picture" : "Add profile picture"}</Text></Pressable></View><Text style={styles.label}>Name</Text><TextInput value={name} onChangeText={setName} style={styles.input} /><Text style={styles.label}>Email</Text><TextInput autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} style={styles.input} />{error ? <Text style={styles.error}>{error}</Text> : null}{message ? <Text style={styles.successText}>{message}</Text> : null}<View style={styles.focusActions}><Button disabled={busy} title={busy ? "Saving..." : "Save profile"} onPress={saveProfile} /></View></View>
     <View style={styles.placeholderCard}><Text style={styles.sectionTitle}>Notifications</Text><Text style={styles.mutedText}>Local task reminders: {permission}</Text><View style={styles.focusActions}><Button title={permission === "Enabled" ? "Permission enabled" : "Enable notifications"} onPress={requestNotifications} /></View></View>
     <View style={styles.placeholderCard}><Text style={styles.sectionTitle}>Offline data</Text><Text style={styles.mutedText}>Tasks and notes can be stored locally on this device. Task changes sync when Internet returns; notes currently remain device-only.</Text><Text style={styles.mutedText}>StudyFlow Mobile v1.0.0</Text></View>
   </View>;
@@ -495,6 +524,7 @@ function HomeScreen({ auth, onLogout }) {
   const [showForm, setShowForm] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
   const [activeView, setActiveView] = useState("today");
+  const [profilePicture, setProfilePicture] = useState(null);
 
   async function loadTasks() {
     setError("");
@@ -531,7 +561,7 @@ function HomeScreen({ auth, onLogout }) {
     await writeSyncQueue(userId, remaining);
   }
 
-  useEffect(() => { loadTasks(); }, []);
+  useEffect(() => { loadTasks(); AsyncStorage.getItem(`${PROFILE_PICTURE_KEY}_${auth.user?.id || auth.user?._id || "current"}`).then(setProfilePicture).catch(() => {}); }, []);
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => { if (state === "active") loadTasks(); });
@@ -582,9 +612,9 @@ function HomeScreen({ auth, onLogout }) {
     ]);
   }
 
-  const viewTitle = activeView.charAt(0).toUpperCase() + activeView.slice(1);
-  const showTasks = activeView === "today" || activeView === "tasks";
-  const showStructure = activeView === "today" || activeView === "goals" || activeView === "subjects";
+  const viewTitle = activeView === "today" ? "Home" : activeView === "today-detail" ? "Today" : activeView.charAt(0).toUpperCase() + activeView.slice(1);
+  const showTasks = activeView === "tasks";
+  const showStructure = activeView === "goals" || activeView === "subjects";
   const showFocus = activeView === "focus";
 
   return <SafeAreaView style={[styles.screen, { backgroundColor: "#e5f6f5" }]} edges={["top", "left", "right"]}>
@@ -598,14 +628,16 @@ function HomeScreen({ auth, onLogout }) {
         {!loadingTasks && tasks.length === 0 ? <View style={styles.emptyCard}><Text style={styles.emptyTitle}>No tasks yet</Text><Text style={styles.emptyText}>Your tasks will appear here once you create them.</Text></View> : null}
         {tasks.map((task) => <View key={task._id} style={styles.taskCard}><Pressable onPress={() => toggleTask(task)} style={styles.taskMain}><View style={[styles.checkbox, task.completed && styles.checkboxDone]}>{task.completed ? <Text style={styles.checkmark}>✓</Text> : null}</View><View style={styles.taskCopy}><Text style={[styles.taskTitle, task.completed && styles.taskCompleted]}>{task.title}</Text><Text style={styles.taskMeta}>{task.priority || "medium"}{task.estimatedMinutes ? ` • ${task.estimatedMinutes} min` : ""}{task.dueDate ? ` • Due ${new Date(task.dueDate).toLocaleString()}` : ""}</Text></View></Pressable><View style={styles.taskActions}><Pressable onPress={() => { setEditingTask(task); setShowForm(true); }}><Text style={styles.editText}>Edit</Text></Pressable><Pressable onPress={() => deleteTask(task)}><Text style={styles.deleteText}>Delete</Text></Pressable></View></View>)}</> : null}
       {activeView === "today" ? <><View style={{ marginTop: 22, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}><Text style={styles.sectionTitle}>Upcoming</Text><Pressable onPress={() => setActiveView("planner")}><Text style={styles.refreshText}>View all</Text></Pressable></View>{tasks.filter((task) => !task.completed && task.dueDate).sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate)).slice(0, 2).map((task) => <View key={"upcoming-" + task._id} style={{ marginTop: 10, borderRadius: 16, padding: 15, backgroundColor: "#e9e1ff", borderLeftWidth: 4, borderLeftColor: "#9b7ee8" }}><Text style={{ color: "#2d3150", fontSize: 14, fontWeight: "800" }}>{task.title}</Text><Text style={{ marginTop: 5, color: "#6f658b", fontSize: 11 }}>{new Date(task.dueDate).toLocaleString()} · {task.estimatedMinutes || 0} min</Text></View>)}<View style={{ marginTop: 22 }}><Text style={styles.sectionTitle}>This week</Text><View style={{ flexDirection: "row", gap: 9, marginTop: 10 }}><View style={{ flex: 1, alignItems: "center", borderRadius: 14, paddingVertical: 13, backgroundColor: "#fff" }}><Text style={{ color: "#8d70d8", fontSize: 20, fontWeight: "800" }}>{tasks.reduce((total, task) => total + (Number(task.estimatedMinutes) || 0), 0)}m</Text><Text style={{ marginTop: 3, color: "#6d7c76", fontSize: 10 }}>Planned time</Text></View><View style={{ flex: 1, alignItems: "center", borderRadius: 14, paddingVertical: 13, backgroundColor: "#fff" }}><Text style={{ color: "#11a889", fontSize: 20, fontWeight: "800" }}>{tasks.filter((task) => task.completed).length}</Text><Text style={{ marginTop: 3, color: "#6d7c76", fontSize: 10 }}>Tasks done</Text></View><View style={{ flex: 1, alignItems: "center", borderRadius: 14, paddingVertical: 13, backgroundColor: "#fff" }}><Text style={{ color: "#3e77c5", fontSize: 20, fontWeight: "800" }}>{tasks.filter((task) => task.dueDate).length}</Text><Text style={{ marginTop: 3, color: "#6d7c76", fontSize: 10 }}>Scheduled</Text></View></View></View></> : null}
+      {activeView === "today" ? <View style={{ marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{[["Today", "today-detail"], ["Task", "tasks"], ["Planner", "planner"], ["Goals", "goals"], ["Subjects", "subjects"], ["Focus", "focus"], ["Insights", "insights"]].map(([label, target]) => <Pressable key={label} onPress={() => setActiveView(target)} style={{ width: "23%", alignItems: "center", borderRadius: 13, paddingVertical: 11, backgroundColor: "#fff" }}><Text style={{ color: "#087b82", fontSize: 17 }}>◉</Text><Text style={{ marginTop: 3, color: "#123d46", fontSize: 9, fontWeight: "700" }}>{label}</Text></Pressable>)}</View> : null}
       {showStructure ? <StudyStructure token={auth.token} /> : null}
+      {activeView === "today-detail" ? <><TodayPanel tasks={tasks} onAddTask={() => { setEditingTask(null); setShowForm(true); }} onOpenFocus={() => setActiveView("focus")} />{showForm ? <TaskForm task={editingTask} token={auth.token} userId={auth.user?.id || auth.user?._id} onCancel={() => { setShowForm(false); setEditingTask(null); }} onSaved={handleSaved} /> : null}</> : null}
       {showFocus ? <FocusPanel token={auth.token} tasks={tasks} isFocusPage={activeView === "focus"} onOpenFocus={() => setActiveView("focus")} /> : null}
       {activeView === "insights" ? <InsightsPanel token={auth.token} /> : null}
       {activeView === "planner" ? <PlannerPanel tasks={tasks} token={auth.token} userId={auth.user?.id || auth.user?._id} onSaved={handleSaved} /> : null}
       {activeView === "notes" ? <NotesPanel userId={auth.user?.id || auth.user?._id} /> : null}
       {activeView === "settings" ? <SettingsPanel auth={auth} /> : null}
     </ScrollView>
-    <View style={{ flexDirection: "row", justifyContent: "space-around", paddingTop: 9, paddingBottom: 8, backgroundColor: "#fff", borderTopWidth: 1, borderTopColor: "#d7e9e8" }}>{[{ key: "today", label: "Home", icon: "⌂" }, { key: "planner", label: "Planner", icon: "▤" }, { key: "focus", label: "Focus", icon: "◷" }, { key: "insights", label: "Insights", icon: "▥" }, { key: "settings", label: "Profile", icon: "○" }].map((item) => <Pressable key={item.key} onPress={() => setActiveView(item.key)} style={{ alignItems: "center", minWidth: 52 }}><Text style={{ color: activeView === item.key ? "#087b82" : "#8aa0a5", fontSize: 19 }}>{item.icon}</Text><Text style={{ marginTop: 2, color: activeView === item.key ? "#087b82" : "#8aa0a5", fontSize: 9, fontWeight: "700" }}>{item.label}</Text></Pressable>)}</View>
+    <View style={{ flexDirection: "row", justifyContent: "space-around", paddingTop: 9, paddingBottom: 8, backgroundColor: "#fff", borderTopWidth: 1, borderTopColor: "#d7e9e8" }}>{[{ key: "today", label: "Home", icon: "⌂" }, { key: "planner", label: "Planner", icon: "▤" }, { key: "today-detail", label: "Today", icon: "✓" }, { key: "insights", label: "Insights", icon: "▥" }, { key: "settings", label: "Profile", icon: "○" }].map((item) => <Pressable key={item.key} onPress={() => setActiveView(item.key)} style={{ alignItems: "center", minWidth: 52 }}><Text style={{ color: activeView === item.key ? "#087b82" : "#8aa0a5", fontSize: 19 }}>{item.icon}</Text><Text style={{ marginTop: 2, color: activeView === item.key ? "#087b82" : "#8aa0a5", fontSize: 9, fontWeight: "700" }}>{item.label}</Text></Pressable>)}</View>
   </SafeAreaView>;
 }
 
