@@ -619,7 +619,7 @@ function AuthScreen({ mode, setMode, onAuthenticated }) {
   }
 
   return <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.flex}><ScrollView contentContainerStyle={[styles.authContainer, { backgroundColor: "#e5f6f5" }]} keyboardShouldPersistTaps="handled">
-    <View style={[styles.brandMark, { backgroundColor: "#c9f3ec", borderRadius: 28 }]}><Text style={[styles.brandMarkText, { color: "#087b82" }]}>S</Text></View>
+    <Image source={require("./assets/studyflow.png")} style={{ alignSelf: "center", width: 74, height: 74, borderRadius: 20 }} />
     <Text style={[styles.brand, { color: "#123d46" }]}>StudyFlow</Text>
     <Text style={[styles.subtitle, { color: "#66818a" }]}>{isSignup ? "Build a better study routine." : "Welcome back, student."}</Text>
     <View style={styles.card}>

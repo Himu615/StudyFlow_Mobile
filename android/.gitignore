@@ -18,5 +18,4 @@ app/src/main/java/inline/
 
 # Bundle artifacts
 *.jsbundle
-
 *.keystore
