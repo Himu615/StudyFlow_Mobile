@@ -273,6 +273,7 @@ function HomeDashboard({ auth, tasks, onNavigate, onAddTask, profilePicture, onE
   const todayProgress = todayTasks.length ? Math.round((todayCompleted / todayTasks.length) * 100) : 0;
   const upcoming = tasks.filter((task) => !task.completed && task.dueDate).sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate)).slice(0, 2);
   const progress = useRef(new Animated.Value(0)).current;
+  const ringPulse = useRef(new Animated.Value(1)).current;
   const [displayHealth, setDisplayHealth] = useState(0);
 
   useEffect(() => {
@@ -281,6 +282,15 @@ function HomeDashboard({ auth, tasks, onNavigate, onAddTask, profilePicture, onE
     Animated.timing(progress, { toValue: health, duration: 900, useNativeDriver: false }).start();
     return () => progress.removeListener(listener);
   }, [health]);
+
+  useEffect(() => {
+    const pulse = Animated.loop(Animated.sequence([
+      Animated.timing(ringPulse, { toValue: 1.06, duration: 850, useNativeDriver: true }),
+      Animated.timing(ringPulse, { toValue: 1, duration: 850, useNativeDriver: true }),
+    ]));
+    pulse.start();
+    return () => pulse.stop();
+  }, []);
 
   const actions = [
     ["Today", "today-detail", "today-outline", "#e1f0ff", "#2478b8"],
@@ -295,8 +305,8 @@ function HomeDashboard({ auth, tasks, onNavigate, onAddTask, profilePicture, onE
   return <View>
     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
       <View style={{ flexDirection: "row", alignItems: "center" }}>
-        {profilePicture ? <Image source={{ uri: profilePicture }} style={{ width: 58, height: 58, borderRadius: 29, marginRight: 12 }} /> : <View style={{ alignItems: "center", justifyContent: "center", width: 58, height: 58, borderRadius: 29, marginRight: 12, backgroundColor: "#c9f3ec" }}><Text style={{ fontSize: 34 }}>👨‍🎓</Text></View>}
-        <View><Text style={styles.smallEyebrow}>STUDYFLOW</Text><Text style={styles.homeTitle}>{auth.user?.name || "Student"}</Text><Pressable onPress={onEditProfilePicture}><Text style={{ marginTop: 2, color: "#087b82", fontSize: 10, fontWeight: "700" }}>Edit photo</Text></Pressable></View>
+        <View style={{ position: "relative", marginRight: 12 }}>{profilePicture ? <Image source={{ uri: profilePicture }} style={{ width: 58, height: 58, borderRadius: 29 }} /> : <View style={{ alignItems: "center", justifyContent: "center", width: 58, height: 58, borderRadius: 29, backgroundColor: "#c9f3ec" }}><Text style={{ fontSize: 34 }}>👨‍🎓</Text></View>}<Pressable onPress={() => Alert.alert("Profile photo", "What would you like to do?", [{ text: "Cancel", style: "cancel" }, { text: "Change photo", onPress: onEditProfilePicture }])} style={{ position: "absolute", right: -5, bottom: -3, alignItems: "center", justifyContent: "center", width: 24, height: 24, borderRadius: 12, backgroundColor: "#fff", borderWidth: 1, borderColor: "#d5e6e3" }}><Ionicons name="pencil" size={13} color="#087b82" /></Pressable></View>
+        <View><Text style={styles.smallEyebrow}>STUDYFLOW</Text><Text style={styles.homeTitle}>{auth.user?.name || "Student"}</Text></View>
       </View>
       <Pressable onPress={() => onNavigate("settings")} style={[styles.logoutButton, { backgroundColor: "#fff" }]}><Text style={styles.logoutText}>Profile</Text></Pressable>
     </View>
@@ -305,7 +315,7 @@ function HomeDashboard({ auth, tasks, onNavigate, onAddTask, profilePicture, onE
     <View style={{ marginTop: 18, borderRadius: 20, padding: 18, backgroundColor: "#10a889" }}>
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
         <View><Text style={{ color: "#d9fff7", fontSize: 12 }}>Learning health</Text><Text style={{ marginTop: 4, color: "#fff", fontSize: 24, fontWeight: "800" }}>{health >= 80 ? "Excellent" : health >= 50 ? "Good progress" : "Start building"}</Text><Text style={{ marginTop: 4, color: "#d9fff7", fontSize: 11 }}>Based on completed tasks</Text></View>
-        <View style={{ alignItems: "center", justifyContent: "center", width: 70, height: 70, borderRadius: 35, borderWidth: 6, borderColor: "#b8eee0" }}><Text style={{ color: "#fff", fontSize: 18, fontWeight: "800" }}>{displayHealth}%</Text></View>
+        <Animated.View style={{ alignItems: "center", justifyContent: "center", width: 70, height: 70, borderRadius: 35, borderWidth: 6, borderColor: "#b8eee0", transform: [{ scale: ringPulse }] }}><Text style={{ color: "#fff", fontSize: 18, fontWeight: "800" }}>{displayHealth}%</Text></Animated.View>
       </View>
       <View style={{ height: 7, marginTop: 16, overflow: "hidden", borderRadius: 7, backgroundColor: "rgba(255,255,255,0.3)" }}><Animated.View style={{ width: progress.interpolate({ inputRange: [0, 100], outputRange: ["0%", "100%"] }), height: "100%", borderRadius: 7, backgroundColor: "#fff" }} /></View>
     </View>
@@ -691,8 +701,8 @@ function HomeScreen({ auth, onLogout }) {
   const showStructure = activeView === "goals" || activeView === "subjects";
   const showFocus = activeView === "focus";
 
-  return <SafeAreaView style={[styles.screen, { backgroundColor: "#e5f6f5" }]} edges={["top", "left", "right"]}>
-    <View style={[styles.homeHeader, { display: activeView === "home" ? "none" : "flex", backgroundColor: "#e5f6f5", borderBottomWidth: 0, paddingBottom: 8 }]}><View><Text style={styles.smallEyebrow}>STUDYFLOW</Text><Text style={styles.homeTitle}>{viewTitle}</Text></View><Pressable onPress={onLogout} style={[styles.logoutButton, { backgroundColor: "#ffffff" }]}><Text style={styles.logoutText}>Log out</Text></Pressable></View>
+  return <SafeAreaView style={[styles.screen, { backgroundColor: "#f2f7f6" }]} edges={["top", "left", "right", "bottom"]}>
+    <View style={[styles.homeHeader, { display: activeView === "home" ? "none" : "flex", backgroundColor: "#f2f7f6", borderBottomWidth: 0, paddingBottom: 8 }]}><View><Text style={styles.smallEyebrow}>STUDYFLOW</Text><Text style={styles.homeTitle}>{viewTitle}</Text></View><Pressable onPress={onLogout} style={[styles.logoutButton, { backgroundColor: "#ffffff" }]}><Text style={styles.logoutText}>Log out</Text></Pressable></View>
     <ScrollView contentContainerStyle={styles.homeContent}>
       {activeView === "today" ? <><Text style={styles.greeting}>Hi, {auth.user?.name || "student"} 👋</Text><Text style={styles.homeSubtitle}>Let’s make today count.</Text><HomeFocusCard tasks={tasks} onOpenFocus={() => setActiveView("focus")} /><View style={{ marginTop: 20, borderRadius: 18, padding: 17, backgroundColor: "#10a889" }}><View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}><View><Text style={{ color: "#d9fff7", fontSize: 12 }}>Your learning health</Text><Text style={{ marginTop: 4, color: "#fff", fontSize: 24, fontWeight: "800" }}>{tasks.length ? (tasks.filter((task) => task.completed).length / tasks.length * 100).toFixed(0) >= 80 ? "Excellent" : "Keep going" : "Start your first task"}</Text><Text style={{ marginTop: 3, color: "#d9fff7", fontSize: 11 }}>Keep your study streak going</Text></View><Text style={{ color: "#fff", fontSize: 30, fontWeight: "800" }}>{tasks.length ? Math.round((tasks.filter((task) => task.completed).length / tasks.length) * 100) : 0}%</Text></View></View><Text style={[styles.sectionTitle, { marginTop: 22 }]}>Quick actions</Text><View style={{ flexDirection: "row", gap: 9, marginTop: 10 }}><Pressable onPress={() => { setEditingTask(null); setShowForm(true); }} style={{ flex: 1, alignItems: "center", borderRadius: 14, paddingVertical: 13, backgroundColor: "#fff" }}><Text style={{ color: "#087b82", fontSize: 20 }}>＋</Text><Text style={{ marginTop: 3, color: "#123d46", fontSize: 11, fontWeight: "700" }}>Task</Text></Pressable><Pressable onPress={() => setActiveView("focus")} style={{ flex: 1, alignItems: "center", borderRadius: 14, paddingVertical: 13, backgroundColor: "#fff" }}><Text style={{ color: "#5874ca", fontSize: 20 }}>◷</Text><Text style={{ marginTop: 3, color: "#123d46", fontSize: 11, fontWeight: "700" }}>Focus</Text></Pressable><Pressable onPress={() => setActiveView("planner")} style={{ flex: 1, alignItems: "center", borderRadius: 14, paddingVertical: 13, backgroundColor: "#fff" }}><Text style={{ color: "#d88d2c", fontSize: 20 }}>▤</Text><Text style={{ marginTop: 3, color: "#123d46", fontSize: 11, fontWeight: "700" }}>Planner</Text></Pressable><Pressable onPress={() => setActiveView("insights")} style={{ flex: 1, alignItems: "center", borderRadius: 14, paddingVertical: 13, backgroundColor: "#fff" }}><Text style={{ color: "#11a889", fontSize: 20 }}>▥</Text><Text style={{ marginTop: 3, color: "#123d46", fontSize: 11, fontWeight: "700" }}>Insights</Text></Pressable></View></> : null}
       {showTasks ? <><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Your tasks</Text><View style={styles.sectionActions}><Pressable onPress={loadTasks}><Text style={styles.refreshText}>Refresh</Text></Pressable><Pressable onPress={() => { setEditingTask(null); setShowForm(true); }} style={styles.addButton}><Text style={styles.addButtonText}>+ Add</Text></Pressable></View></View>
@@ -712,7 +722,7 @@ function HomeScreen({ auth, onLogout }) {
       {activeView === "notes" ? <NotesPanel userId={auth.user?.id || auth.user?._id} /> : null}
       {activeView === "settings" ? <SettingsPanel auth={auth} /> : null}
     </ScrollView>
-    <View style={{ flexDirection: "row", justifyContent: "space-around", paddingTop: 9, paddingBottom: 8, backgroundColor: "#fff", borderTopWidth: 1, borderTopColor: "#d7e9e8" }}>{[{ key: "home", label: "Home", icon: "home-outline", color: "#087b82" }, { key: "planner", label: "Planner", icon: "calendar-outline", color: "#7657c7" }, { key: "today-detail", label: "Today", icon: "checkmark-circle-outline", color: "#e18a2a" }, { key: "insights", label: "Insights", icon: "bar-chart-outline", color: "#3d78c3" }, { key: "settings", label: "Profile", icon: "person-outline", color: "#db6c8f" }].map((item) => <Pressable key={item.key} onPress={() => setActiveView(item.key)} style={{ alignItems: "center", minWidth: 58 }}><Ionicons name={item.icon} size={25} color={activeView === item.key ? item.color : "#9ab0b5"} /><Text style={{ marginTop: 3, color: activeView === item.key ? item.color : "#8aa0a5", fontSize: 9, fontWeight: "800" }}>{item.label}</Text></Pressable>)}</View>
+    <View style={{ flexDirection: "row", justifyContent: "space-around", paddingTop: 10, paddingBottom: Platform.OS === "android" ? 14 : 18, minHeight: 74, backgroundColor: "#fff", borderTopWidth: 1, borderTopColor: "#d7e9e8" }}>{[{ key: "home", label: "Home", icon: "home-outline", color: "#087b82" }, { key: "planner", label: "Planner", icon: "calendar-outline", color: "#7657c7" }, { key: "today-detail", label: "Today", icon: "checkmark-circle-outline", color: "#e18a2a" }, { key: "insights", label: "Insights", icon: "bar-chart-outline", color: "#3d78c3" }, { key: "settings", label: "Profile", icon: "person-outline", color: "#db6c8f" }].map((item) => <Pressable key={item.key} onPress={() => setActiveView(item.key)} style={{ alignItems: "center", minWidth: 58 }}><Ionicons name={item.icon} size={25} color={activeView === item.key ? item.color : "#9ab0b5"} /><Text style={{ marginTop: 3, color: activeView === item.key ? item.color : "#8aa0a5", fontSize: 10, fontWeight: "800" }}>{item.label}</Text></Pressable>)}</View>
   </SafeAreaView>;
 }
 
