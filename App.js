@@ -131,7 +131,7 @@ function TaskForm({ task, initialDueDate, token, userId, onCancel, onSaved }) {
   </View>;
 }
 
-function StudyStructure({ token, mode = "both" }) {
+function StudyStructure({ token, mode = "both", tasks = [] }) {
   const [subjects, setSubjects] = useState([]);
   const [goals, setGoals] = useState([]);
   const [subjectName, setSubjectName] = useState("");
@@ -185,10 +185,15 @@ function StudyStructure({ token, mode = "both" }) {
     ]);
   }
 
+  function subjectProgress(subject) {
+    const linked = tasks.filter((task) => (typeof task.subjectId === "object" ? task.subjectId?._id : task.subjectId) === subject._id);
+    return linked.length ? Math.round((linked.filter((task) => task.completed).length / linked.length) * 100) : 0;
+  }
+
   return <View style={styles.structureBlock}>
     {mode !== "goals" ? <><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Subjects</Text><Pressable onPress={() => setShowSubjectForm((value) => !value)}><Text style={styles.refreshText}>+ Add</Text></Pressable></View>
     {showSubjectForm ? <View style={styles.inlineForm}><TextInput onChangeText={setSubjectName} placeholder="Subject name" placeholderTextColor="#91a09a" style={styles.input} value={subjectName} /><Button title="Save subject" onPress={addSubject} /></View> : null}
-    {subjects.length === 0 ? <Text style={styles.mutedText}>No subjects yet.</Text> : subjects.map((subject) => <View key={subject._id} style={styles.structureRow}><View style={[styles.colorDot, { backgroundColor: subject.color || "#11806b" }]} /><View style={styles.goalCopy}><Text style={styles.structureName}>{subject.name}</Text><AnimatedPercentBar value={subject.progress} color={subject.color || "#11806b"} /></View><Pressable onPress={() => removeItem("subject", subject)}><Text style={styles.deleteText}>Delete</Text></Pressable></View>)}
+    {subjects.length === 0 ? <Text style={styles.mutedText}>No subjects yet.</Text> : subjects.map((subject) => <View key={subject._id} style={styles.structureRow}><View style={[styles.colorDot, { backgroundColor: subject.color || "#11806b" }]} /><View style={styles.goalCopy}><Text style={styles.structureName}>{subject.name}</Text><AnimatedPercentBar value={subjectProgress(subject)} color={subject.color || "#11806b"} /></View><Pressable onPress={() => removeItem("subject", subject)}><Text style={styles.deleteText}>Delete</Text></Pressable></View>)}
     </> : null}{mode !== "subjects" ? <><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Goals</Text><Pressable onPress={() => setShowGoalForm((value) => !value)}><Text style={styles.refreshText}>+ Add</Text></Pressable></View>
     {showGoalForm ? <View style={styles.inlineForm}><TextInput onChangeText={setGoalTitle} placeholder="Goal title" placeholderTextColor="#91a09a" style={styles.input} value={goalTitle} /><Button title="Save goal" onPress={addGoal} /></View> : null}
     {goals.length === 0 ? <Text style={styles.mutedText}>No goals yet.</Text> : goals.map((goal) => <View key={goal._id} style={styles.structureRow}><View style={styles.goalDot}><Text style={styles.goalDotText}>◎</Text></View><View style={styles.goalCopy}><Text style={styles.structureName}>{goal.title}</Text><AnimatedPercentBar value={goal.progress} color="#8d70d8" /></View><Pressable onPress={() => removeItem("goal", goal)}><Text style={styles.deleteText}>Delete</Text></Pressable></View>)} </> : null}
@@ -724,7 +729,7 @@ function HomeScreen({ auth, onLogout }) {
       {activeView === "today" ? <View style={{ marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{[["Today", "today-detail"], ["Task", "tasks"], ["Planner", "planner"], ["Goals", "goals"], ["Subjects", "subjects"], ["Focus", "focus"], ["Insights", "insights"]].map(([label, target]) => <Pressable key={label} onPress={() => setActiveView(target)} style={{ width: "23%", alignItems: "center", borderRadius: 13, paddingVertical: 11, backgroundColor: "#fff" }}><Text style={{ color: "#087b82", fontSize: 17 }}>◉</Text><Text style={{ marginTop: 3, color: "#123d46", fontSize: 9, fontWeight: "700" }}>{label}</Text></Pressable>)}</View> : null}
       {activeView === "home" ? <HomeDashboard auth={auth} tasks={tasks} profilePicture={profilePicture} onEditProfilePicture={chooseHomeProfilePicture} onNavigate={setActiveView} onAddTask={() => { setEditingTask(null); setShowForm(true); }} /> : null}
       {activeView === "home" && showForm ? <TaskForm task={editingTask} token={auth.token} userId={auth.user?.id || auth.user?._id} onCancel={() => { setShowForm(false); setEditingTask(null); }} onSaved={handleSaved} /> : null}
-      {showStructure ? <StudyStructure token={auth.token} mode={activeView} /> : null}
+      {showStructure ? <StudyStructure token={auth.token} mode={activeView} tasks={tasks} /> : null}
       {activeView === "today-detail" ? <><TodayPanel tasks={tasks} onAddTask={() => { setEditingTask(null); setShowForm(true); }} onOpenFocus={() => setActiveView("focus")} />{showForm ? <TaskForm task={editingTask} token={auth.token} userId={auth.user?.id || auth.user?._id} onCancel={() => { setShowForm(false); setEditingTask(null); }} onSaved={handleSaved} /> : null}</> : null}
       {showFocus ? <FocusPanel token={auth.token} tasks={tasks} isFocusPage={activeView === "focus"} onOpenFocus={() => setActiveView("focus")} /> : null}
       {activeView === "insights" ? <InsightsPanel token={auth.token} /> : null}
