@@ -53,9 +53,16 @@ async function scheduleTaskNotification(task) {
     const requested = await Notifications.requestPermissionsAsync();
     if (!requested.granted) return;
   }
+  if (Platform.OS === "android" && Notifications.getExactAlarmPermissionsAsync && Notifications.requestExactAlarmPermissionsAsync) {
+    const exact = await Notifications.getExactAlarmPermissionsAsync().catch(() => null);
+    if (exact && !exact.granted) {
+      const requestedExact = await Notifications.requestExactAlarmPermissionsAsync().catch(() => null);
+      if (requestedExact && !requestedExact.granted) return;
+    }
+  }
   const identifier = await Notifications.scheduleNotificationAsync({
     content: { title: reminderMinutes ? "StudyFlow task reminder" : "StudyFlow task due", body: task.title, sound: "default", priority: Notifications.AndroidNotificationPriority.MAX, channelId: ALARM_CHANNEL_ID, data: { taskId: task._id } },
-    trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: notificationDate },
+    trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: notificationDate, delivery: "alarmClock", channelId: ALARM_CHANNEL_ID },
   });
   notificationMap[task._id] = identifier;
   await AsyncStorage.setItem(NOTIFICATION_KEY, JSON.stringify(notificationMap));
