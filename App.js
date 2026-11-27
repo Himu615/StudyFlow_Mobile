@@ -595,13 +595,67 @@ function SettingsPanel({ auth, onProfileUpdated }) {
   </View>;
 }
 
+function ForgotPasswordScreen({ onBack }) {
+  const [step, setStep] = useState("email");
+  const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  async function requestCode() {
+    setError("");
+    setMessage("");
+    if (!email.trim()) return setError("Email is required.");
+    setBusy(true);
+    try {
+      const data = await apiRequest("/auth/forgot-password", { method: "POST", body: JSON.stringify({ email: email.trim().toLowerCase() }) });
+      setMessage(data.message || "If the email exists, a verification code was sent.");
+      setStep("code");
+    } catch (requestError) { setError(requestError.message); }
+    finally { setBusy(false); }
+  }
+
+  async function resetPassword() {
+    setError("");
+    setMessage("");
+    if (!/^\d{6}$/.test(code)) return setError("Enter the 6-digit code from your email.");
+    if (newPassword.length < 6) return setError("Password must be at least 6 characters.");
+    if (newPassword !== confirmPassword) return setError("Passwords do not match.");
+    setBusy(true);
+    try {
+      const data = await apiRequest("/auth/reset-password", { method: "POST", body: JSON.stringify({ email: email.trim().toLowerCase(), code, newPassword }) });
+      setMessage(data.message || "Password reset successfully. Please sign in.");
+      setTimeout(onBack, 900);
+    } catch (requestError) { setError(requestError.message); }
+    finally { setBusy(false); }
+  }
+
+  return <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.flex}><ScrollView contentContainerStyle={[styles.authContainer, { backgroundColor: "#e5f6f5" }]} keyboardShouldPersistTaps="handled">
+    <Image source={require("./assets/studyflow.png")} style={{ alignSelf: "center", width: 74, height: 74, borderRadius: 20 }} />
+    <Text style={[styles.brand, { color: "#123d46" }]}>Reset password</Text>
+    <Text style={[styles.subtitle, { color: "#66818a" }]}>{step === "email" ? "We’ll send a 6-digit code to your email." : "Enter the code and choose a new password."}</Text>
+    <View style={styles.card}>
+      {step === "email" ? <><Field label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" /><Button disabled={busy} title={busy ? "Sending..." : "Send code"} onPress={requestCode} /></> : <><Field label="Verification code" value={code} onChangeText={(value) => setCode(value.replace(/\D/g, "").slice(0, 6))} keyboardType="numeric" /><Field label="New password" value={newPassword} onChangeText={setNewPassword} secureTextEntry /><Field label="Confirm password" value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry /><Button disabled={busy} title={busy ? "Saving..." : "Set new password"} onPress={resetPassword} /></>}
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {message ? <Text style={styles.successText}>{message}</Text> : null}
+      <Pressable onPress={onBack} style={styles.switchButton}><Text style={styles.switchText}>Back to sign in</Text></Pressable>
+    </View>
+  </ScrollView></KeyboardAvoidingView>;
+}
+
 function AuthScreen({ mode, setMode, onAuthenticated }) {
+  const [forgot, setForgot] = useState(false);
   const isSignup = mode === "signup";
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  if (forgot) return <ForgotPasswordScreen onBack={() => { setForgot(false); setError(""); }} />;
 
   async function submit() {
     setError("");
@@ -631,6 +685,7 @@ function AuthScreen({ mode, setMode, onAuthenticated }) {
       <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry />
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <Button disabled={busy} title={busy ? "Please wait..." : isSignup ? "Create account" : "Sign in"} onPress={submit} />
+      {!isSignup ? <Pressable onPress={() => { setError(""); setForgot(true); }} style={{ alignItems: "flex-end", marginTop: 12 }}><Text style={styles.refreshText}>Forgot password?</Text></Pressable> : null}
       <Pressable onPress={() => { setError(""); setMode(isSignup ? "login" : "signup"); }} style={styles.switchButton}><Text style={styles.switchText}>{isSignup ? "Already have an account? Sign in" : "New to StudyFlow? Create an account"}</Text></Pressable>
     </View>
     <Text style={styles.apiHint}>API: {getApiBaseUrl() || "not configured"}</Text>
