@@ -12,12 +12,29 @@ import { enqueueSync, loadTaskCache, readSyncQueue, saveTaskCache, writeSyncQueu
 const TOKEN_KEY = "studyflow_token";
 const USER_KEY = "studyflow_user";
 const NOTIFICATION_KEY = "studyflow_task_notifications";
+const ALARM_CHANNEL_ID = "studyflow-task-alarms";
 const NAV_ITEMS = ["home", "planner", "today", "insights", "settings"];
 const PROFILE_PICTURE_KEY = "studyflow_profile_picture";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({ shouldShowAlert: true, shouldPlaySound: true, shouldSetBadge: false }),
 });
+
+async function configureAlarmChannel() {
+  if (Platform.OS !== "android") return;
+  await Notifications.setNotificationChannelAsync(ALARM_CHANNEL_ID, {
+    name: "StudyFlow alarms",
+    description: "Loud reminders for due study tasks",
+    importance: Notifications.AndroidImportance.MAX,
+    sound: "default",
+    vibrationPattern: [0, 700, 350, 700],
+    enableVibrate: true,
+    enableLights: true,
+    bypassDnd: true,
+    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    audioAttributes: { usage: Notifications.AndroidAudioUsage.ALARM, contentType: Notifications.AndroidAudioContentType.MUSIC },
+  }).catch(() => {});
+}
 
 async function scheduleTaskNotification(task) {
   const notificationMap = JSON.parse((await AsyncStorage.getItem(NOTIFICATION_KEY)) || "{}");
@@ -37,7 +54,7 @@ async function scheduleTaskNotification(task) {
     if (!requested.granted) return;
   }
   const identifier = await Notifications.scheduleNotificationAsync({
-    content: { title: reminderMinutes ? "StudyFlow task reminder" : "StudyFlow task due", body: task.title, data: { taskId: task._id } },
+    content: { title: reminderMinutes ? "StudyFlow task reminder" : "StudyFlow task due", body: task.title, sound: "default", priority: Notifications.AndroidNotificationPriority.MAX, channelId: ALARM_CHANNEL_ID, data: { taskId: task._id } },
     trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: notificationDate },
   });
   notificationMap[task._id] = identifier;
@@ -748,6 +765,7 @@ export default function App() {
   const [mode, setMode] = useState("login");
 
   useEffect(() => {
+    configureAlarmChannel();
     async function restoreSession() {
       try {
         const token = await AsyncStorage.getItem(TOKEN_KEY);
