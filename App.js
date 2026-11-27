@@ -316,6 +316,21 @@ function HomeDashboard({ auth, tasks, onNavigate, onAddTask, profilePicture, onE
   const todayTasks = tasks.filter((task) => localDateKey(task.dueDate || task.createdAt) === today);
   const todayCompleted = todayTasks.filter((task) => task.completed).length;
   const todayProgress = todayTasks.length ? Math.round((todayCompleted / todayTasks.length) * 100) : 0;
+  // Weekly cards must reflect only tasks scheduled in the current local week,
+  // rather than all historical tasks returned by the API.
+  const weekStart = new Date();
+  weekStart.setHours(0, 0, 0, 0);
+  weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 7);
+  const thisWeekTasks = tasks.filter((task) => {
+    if (!task.dueDate) return false;
+    const dueDate = new Date(task.dueDate);
+    return !Number.isNaN(dueDate.getTime()) && dueDate >= weekStart && dueDate < weekEnd;
+  });
+  const weeklyPlannedMinutes = thisWeekTasks.reduce((sum, task) => sum + (Number(task.estimatedMinutes) || 0), 0);
+  const weeklyCompletedTasks = thisWeekTasks.filter((task) => task.completed).length;
+  const weeklyScheduledTasks = thisWeekTasks.length;
   const upcoming = tasks.filter((task) => !task.completed && task.dueDate && new Date(task.dueDate).getTime() > Date.now()).sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate)).slice(0, 2);
   const progress = useRef(new Animated.Value(0)).current;
   const ringPulse = useRef(new Animated.Value(1)).current;
@@ -370,7 +385,7 @@ function HomeDashboard({ auth, tasks, onNavigate, onAddTask, profilePicture, onE
     <View style={{ marginTop: 24, borderRadius: 18, padding: 16, backgroundColor: "#fff", borderWidth: 1, borderColor: "#d7e9e8" }}><View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}><View><Text style={{ color: "#087b82", fontSize: 12, fontWeight: "800" }}>TODAY’S PLAN</Text><Text style={[styles.sectionTitle, { marginTop: 4 }]}>{todayCompleted} of {todayTasks.length} tasks completed</Text></View><Pressable onPress={() => onNavigate("today-detail")}><Text style={styles.refreshText}>View all ›</Text></Pressable></View><View style={{ height: 7, marginTop: 13, overflow: "hidden", borderRadius: 7, backgroundColor: "#e6f0ef" }}><View style={{ width: (todayProgress + "%"), height: "100%", borderRadius: 7, backgroundColor: "#10a889" }} /></View></View>
     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 24 }}><Text style={styles.sectionTitle}>Upcoming reminders</Text><Pressable onPress={() => onNavigate("planner")}><Text style={styles.refreshText}>View all</Text></Pressable></View>
     {upcoming.length ? upcoming.map((task) => <Pressable key={task._id} onPress={() => onNavigate("planner")} style={{ marginTop: 9, borderRadius: 15, padding: 14, backgroundColor: "#e9e1ff", borderLeftWidth: 4, borderLeftColor: "#9b7ee8" }}><Text style={{ color: "#2d3150", fontSize: 13, fontWeight: "800" }}>{task.title}</Text><Text style={{ marginTop: 4, color: "#6f658b", fontSize: 10 }}>{new Date(task.dueDate).toLocaleString()} · {task.estimatedMinutes || 0} min</Text></Pressable>) : <View style={{ marginTop: 9, borderRadius: 15, padding: 16, backgroundColor: "#fff" }}><Text style={styles.mutedText}>No upcoming reminders.</Text></View>}
-    <Text style={[styles.sectionTitle, { marginTop: 24 }]}>This week</Text><View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}><View style={{ flex: 1, alignItems: "center", borderRadius: 14, paddingVertical: 13, backgroundColor: "#fff" }}><Text style={{ color: "#8d70d8", fontSize: 18, fontWeight: "800" }}>{tasks.reduce((sum, task) => sum + (Number(task.estimatedMinutes) || 0), 0)}m</Text><Text style={styles.taskMeta}>Planned time</Text></View><View style={{ flex: 1, alignItems: "center", borderRadius: 14, paddingVertical: 13, backgroundColor: "#fff" }}><Text style={{ color: "#11a889", fontSize: 18, fontWeight: "800" }}>{completed}</Text><Text style={styles.taskMeta}>Tasks done</Text></View><View style={{ flex: 1, alignItems: "center", borderRadius: 14, paddingVertical: 13, backgroundColor: "#fff" }}><Text style={{ color: "#3e77c5", fontSize: 18, fontWeight: "800" }}>{tasks.filter((task) => task.dueDate).length}</Text><Text style={styles.taskMeta}>Scheduled</Text></View></View>
+    <Text style={[styles.sectionTitle, { marginTop: 24 }]}>This week</Text><View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}><View style={{ flex: 1, alignItems: "center", borderRadius: 14, paddingVertical: 13, backgroundColor: "#fff" }}><Text style={{ color: "#8d70d8", fontSize: 18, fontWeight: "800" }}>{weeklyPlannedMinutes}m</Text><Text style={styles.taskMeta}>Planned time</Text></View><View style={{ flex: 1, alignItems: "center", borderRadius: 14, paddingVertical: 13, backgroundColor: "#fff" }}><Text style={{ color: "#11a889", fontSize: 18, fontWeight: "800" }}>{weeklyCompletedTasks}</Text><Text style={styles.taskMeta}>Tasks done</Text></View><View style={{ flex: 1, alignItems: "center", borderRadius: 14, paddingVertical: 13, backgroundColor: "#fff" }}><Text style={{ color: "#3e77c5", fontSize: 18, fontWeight: "800" }}>{weeklyScheduledTasks}</Text><Text style={styles.taskMeta}>Scheduled</Text></View></View>
   </View>;
 }
 
