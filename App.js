@@ -17,6 +17,7 @@ const ALARM_CHANNEL_ID = "studyflow-task-alarms";
 const { StudyFlowAlarm } = NativeModules;
 const NAV_ITEMS = ["home", "planner", "today", "insights", "settings"];
 const PROFILE_PICTURE_KEY = "studyflow_profile_picture";
+const NOTIFICATIONS_ENABLED_KEY = "studyflow_notifications_enabled";
 const UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/Himu615/StudyFlow_Mobile/main/update.json";
 const CURRENT_APP_VERSION = Application.nativeApplicationVersion || "1.0.0";
 
@@ -67,6 +68,8 @@ async function configureAlarmChannel() {
 }
 
 async function scheduleTaskNotification(task) {
+  const notificationsEnabled = await AsyncStorage.getItem(NOTIFICATIONS_ENABLED_KEY);
+  if (notificationsEnabled === "false") return;
   const notificationMap = JSON.parse((await AsyncStorage.getItem(NOTIFICATION_KEY)) || "{}");
   if (task?._id && notificationMap[task._id]) {
     if (Platform.OS === "android" && StudyFlowAlarm?.cancelAlarm && String(notificationMap[task._id]).startsWith("alarm:")) {
@@ -146,6 +149,20 @@ function DateTimePickerModal({ value, onChange, onClose }) {
   return <Modal animationType="slide" transparent visible onRequestClose={onClose}><View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(16,47,42,0.45)" }}><View style={{ maxHeight: "88%", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, backgroundColor: "#f5f6f1" }}><View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><Text style={{ color: "#17362f", fontSize: 20, fontWeight: "800" }}>Choose due date & time</Text><Pressable onPress={onClose}><Text style={styles.closeText}>Cancel</Text></Pressable></View><Text style={styles.label}>Calendar</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 18 }}>{days.map((day) => <Pressable key={day.key} onPress={() => setSelectedDate(day.key)} style={{ minWidth: 72, alignItems: "center", borderRadius: 14, paddingVertical: 11, backgroundColor: selectedDate === day.key ? "#11806b" : "#fff", borderWidth: 1, borderColor: selectedDate === day.key ? "#11806b" : "#dfe3dc" }}><Text style={{ color: selectedDate === day.key ? "#dff2e9" : "#7b8a83", fontSize: 12, fontWeight: "700" }}>{day.label}</Text><Text style={{ marginTop: 4, color: selectedDate === day.key ? "#fff" : "#17362f", fontWeight: "800" }}>{day.short}</Text></Pressable>)}</ScrollView><Text style={styles.label}>Time</Text><ScrollView style={{ maxHeight: 210, marginBottom: 10 }} contentContainerStyle={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{times.map((time) => <Pressable key={time} onPress={() => setSelectedTime(time)} style={{ width: "23%", alignItems: "center", borderRadius: 10, paddingVertical: 10, backgroundColor: selectedTime === time ? "#dff2e9" : "#fff", borderWidth: 1, borderColor: selectedTime === time ? "#11806b" : "#dfe3dc" }}><Text style={{ color: selectedTime === time ? "#11806b" : "#62736b", fontWeight: "700" }}>{time}</Text></Pressable>)}</ScrollView><TextInput value={selectedTime} onChangeText={(value) => setSelectedTime(value.replace(/[^0-9:]/g, "").slice(0, 5))} keyboardType="numbers-and-punctuation" placeholder="Custom time (HH:MM)" placeholderTextColor="#91a09a" style={[styles.input, { marginBottom: 12 }]} /><Button title={"Set " + selectedDate + " " + selectedTime} onPress={confirm} /></View></View></Modal>;
 }
 
+const extraStyles = {
+  optionalText: { color: "#91a09a", fontSize: 11, fontWeight: "400" },
+  selectInput: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 48, marginBottom: 10, borderWidth: 1, borderColor: "#dfe3dc", borderRadius: 12, paddingHorizontal: 14, backgroundColor: "#fff" },
+  selectInputText: { color: "#17362f", fontSize: 15 },
+  optionList: { marginTop: -4, marginBottom: 12, borderWidth: 1, borderColor: "#dfe3dc", borderRadius: 12, backgroundColor: "#fff", overflow: "hidden" },
+  optionItem: { paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#eef1ed" },
+  optionText: { color: "#17362f", fontSize: 14 },
+  taskFilters: { marginBottom: 12, padding: 5, borderRadius: 14, backgroundColor: "#fff", borderWidth: 1, borderColor: "#dfe3dc" },
+  filterChip: { borderRadius: 18, paddingHorizontal: 14, paddingVertical: 9, backgroundColor: "#f1f4f1" },
+  filterChipActive: { backgroundColor: "#dff2e9" },
+  filterChipText: { color: "#687870", fontSize: 12, fontWeight: "700" },
+  filterChipTextActive: { color: "#11806b" },
+};
+
 function TaskForm({ task, initialDueDate, token, userId, onCancel, onSaved }) {
   const [title, setTitle] = useState(task?.title || "");
   const [priority, setPriority] = useState(task?.priority || "medium");
@@ -155,6 +172,18 @@ function TaskForm({ task, initialDueDate, token, userId, onCancel, onSaved }) {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [subjects, setSubjects] = useState([]);
+  const [goals, setGoals] = useState([]);
+  const [showSubjectOptions, setShowSubjectOptions] = useState(false);
+  const [showGoalOptions, setShowGoalOptions] = useState(false);
+  const [subjectId, setSubjectId] = useState(typeof task?.subjectId === "object" ? task.subjectId?._id : task?.subjectId || "");
+  const [goalId, setGoalId] = useState(typeof task?.goalId === "object" ? task.goalId?._id : task?.goalId || "");
+
+  useEffect(() => {
+    Promise.all([apiRequest("/subjects", {}, token), apiRequest("/goals", {}, token)])
+      .then(([subjectData, goalData]) => { setSubjects(subjectData.subjects || []); setGoals(goalData.goals || []); })
+      .catch(() => {});
+  }, [token]);
 
   async function submit() {
     setError("");
@@ -167,13 +196,13 @@ function TaskForm({ task, initialDueDate, token, userId, onCancel, onSaved }) {
     try {
       const data = await apiRequest(task ? `/tasks/${task._id}` : "/tasks", {
         method: task ? "PATCH" : "POST",
-        body: JSON.stringify({ title: title.trim(), priority, estimatedMinutes, dueDate: dueDate || null, reminderMinutesBefore: reminder ? Number(reminder) : null }),
+        body: JSON.stringify({ title: title.trim(), priority, estimatedMinutes, dueDate: dueDate || null, reminderMinutesBefore: reminder ? Number(reminder) : null, subjectId: subjectId || null, goalId: goalId || null }),
       }, token);
       onSaved(data.task);
     } catch (requestError) {
       if (userId) {
-        const localTask = { ...(task || {}), _id: task?._id || `local-${Date.now()}`, title: title.trim(), priority, estimatedMinutes, dueDate: dueDate || null, reminderMinutesBefore: reminder ? Number(reminder) : null, completed: task?.completed || false, offlinePending: true };
-        await enqueueSync(userId, task ? { type: "updateTask", id: task._id, patch: { title: localTask.title, priority, estimatedMinutes, dueDate: localTask.dueDate, reminderMinutesBefore: localTask.reminderMinutesBefore } } : { type: "createTask", task: localTask });
+        const localTask = { ...(task || {}), _id: task?._id || `local-${Date.now()}`, title: title.trim(), priority, estimatedMinutes, dueDate: dueDate || null, reminderMinutesBefore: reminder ? Number(reminder) : null, subjectId: subjectId || null, goalId: goalId || null, completed: task?.completed || false, offlinePending: true };
+        await enqueueSync(userId, task ? { type: "updateTask", id: task._id, patch: { title: localTask.title, priority, estimatedMinutes, dueDate: localTask.dueDate, reminderMinutesBefore: localTask.reminderMinutesBefore, subjectId: localTask.subjectId, goalId: localTask.goalId } } : { type: "createTask", task: localTask });
         onSaved(localTask);
         return;
       }
@@ -186,6 +215,12 @@ function TaskForm({ task, initialDueDate, token, userId, onCancel, onSaved }) {
   return <View style={styles.formCard}>
     <View style={styles.formHeader}><Text style={styles.formTitle}>{task ? "Edit task" : "New task"}</Text><Pressable onPress={onCancel}><Text style={styles.closeText}>Close</Text></Pressable></View>
     <Field label="Task title" value={title} onChangeText={setTitle} />
+    <Text style={styles.label}>Subject <Text style={extraStyles.optionalText}>(optional)</Text></Text>
+    <Pressable onPress={() => { setShowSubjectOptions((value) => !value); setShowGoalOptions(false); }} style={extraStyles.selectInput}><Text style={extraStyles.selectInputText}>{subjects.find((item) => item._id === subjectId)?.name || "No subject"}</Text><Ionicons name={showSubjectOptions ? "chevron-up" : "chevron-down"} size={18} color="#58746f" /></Pressable>
+    {showSubjectOptions ? <View style={extraStyles.optionList}><Pressable onPress={() => { setSubjectId(""); setShowSubjectOptions(false); }} style={extraStyles.optionItem}><Text style={extraStyles.optionText}>No subject</Text></Pressable>{subjects.map((item) => <Pressable key={item._id} onPress={() => { setSubjectId(item._id); setShowSubjectOptions(false); }} style={extraStyles.optionItem}><Text style={extraStyles.optionText}>{item.name}</Text></Pressable>)}</View> : null}
+    <Text style={styles.label}>Goal <Text style={extraStyles.optionalText}>(optional)</Text></Text>
+    <Pressable onPress={() => { setShowGoalOptions((value) => !value); setShowSubjectOptions(false); }} style={extraStyles.selectInput}><Text style={extraStyles.selectInputText}>{goals.find((item) => item._id === goalId)?.title || "No goal"}</Text><Ionicons name={showGoalOptions ? "chevron-up" : "chevron-down"} size={18} color="#58746f" /></Pressable>
+    {showGoalOptions ? <View style={extraStyles.optionList}><Pressable onPress={() => { setGoalId(""); setShowGoalOptions(false); }} style={extraStyles.optionItem}><Text style={extraStyles.optionText}>No goal</Text></Pressable>{goals.map((item) => <Pressable key={item._id} onPress={() => { setGoalId(item._id); setShowGoalOptions(false); }} style={extraStyles.optionItem}><Text style={extraStyles.optionText}>{item.title}</Text></Pressable>)}</View> : null}
     <Text style={styles.label}>Priority</Text>
     <View style={styles.priorityRow}>{["low", "medium", "high"].map((item) => <Pressable key={item} onPress={() => setPriority(item)} style={[styles.priorityButton, priority === item && styles.priorityButtonActive]}><Text style={[styles.priorityText, priority === item && styles.priorityTextActive]}>{item}</Text></Pressable>)}</View>
     <View style={styles.fieldGroup}><Text style={styles.label}>Estimated minutes</Text><TextInput keyboardType="numeric" onChangeText={setMinutes} style={styles.input} value={minutes} /></View>
@@ -396,11 +431,11 @@ function HomeDashboard({ auth, tasks, onNavigate, onAddTask, profilePicture, onE
     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
       <View style={{ flexDirection: "row", alignItems: "center" }}>
         <View style={{ position: "relative", marginRight: 12 }}>{profilePicture ? <Image source={{ uri: profilePicture }} style={{ width: 58, height: 58, borderRadius: 29 }} /> : <View style={{ alignItems: "center", justifyContent: "center", width: 58, height: 58, borderRadius: 29, backgroundColor: "#c9f3ec" }}><Text style={{ fontSize: 34 }}>👨‍🎓</Text></View>}<Pressable onPress={() => Alert.alert("Profile photo", "What would you like to do?", [{ text: "Cancel", style: "cancel" }, { text: "Change photo", onPress: onEditProfilePicture }])} style={{ position: "absolute", right: -9, bottom: -8, padding: 2 }}><Ionicons name="pencil" size={13} color="#087b82" /></Pressable></View>
-        <View><Text style={styles.smallEyebrow}>STUDYFLOW</Text><Text style={styles.homeTitle}>{auth.user?.name || "Student"}</Text></View>
+        <View style={{ maxWidth: 150 }}><Text style={styles.smallEyebrow}>STUDYFLOW</Text><Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65} style={styles.homeTitle}>{auth.user?.name || "Student"}</Text></View>
       </View>
       <Pressable onPress={() => onNavigate("settings")} style={[styles.logoutButton, { backgroundColor: "#fff" }]}><Text style={styles.logoutText}>Profile</Text></Pressable>
     </View>
-    <Text style={[styles.greeting, { marginTop: 18 }]}>Good morning, {auth.user?.name || "student"} 👋</Text>
+    <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={[styles.greeting, { marginTop: 18 }]}>Good morning, {auth.user?.name || "student"} 👋</Text>
     <Text style={styles.homeSubtitle}>Let’s make today count.</Text>
     <View style={{ marginTop: 18, borderRadius: 20, padding: 18, backgroundColor: "#10a889" }}>
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
@@ -596,9 +631,11 @@ function SettingsPanel({ auth, onProfileUpdated }) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [profilePicture, setProfilePicture] = useState(null);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
   useEffect(() => {
     AsyncStorage.getItem(`${PROFILE_PICTURE_KEY}_${auth.user?.id || auth.user?._id || "current"}`).then(setProfilePicture).catch(() => {});
+    AsyncStorage.getItem(NOTIFICATIONS_ENABLED_KEY).then((value) => setNotificationsEnabled(value !== "false")).catch(() => {});
     Notifications.getPermissionsAsync().then((result) => setPermission(result.granted ? "Enabled" : "Not enabled")).catch(() => setPermission("Unavailable"));
   }, [auth.user]);
 
@@ -612,9 +649,19 @@ function SettingsPanel({ auth, onProfileUpdated }) {
     await AsyncStorage.setItem(`${PROFILE_PICTURE_KEY}_${auth.user?.id || auth.user?._id || "current"}`, uri);
   }
 
-  async function requestNotifications() {
+  async function toggleNotifications() {
+    if (notificationsEnabled) {
+      await AsyncStorage.setItem(NOTIFICATIONS_ENABLED_KEY, "false");
+      await Notifications.dismissAllNotificationsAsync().catch(() => {});
+      setNotificationsEnabled(false);
+      setPermission("Disabled");
+      return;
+    }
     const result = await Notifications.requestPermissionsAsync();
-    setPermission(result.granted ? "Enabled" : "Not enabled");
+    if (!result.granted) { setPermission("Not enabled"); return; }
+    await AsyncStorage.setItem(NOTIFICATIONS_ENABLED_KEY, "true");
+    setNotificationsEnabled(true);
+    setPermission("Enabled");
   }
 
   async function saveProfile() {
@@ -634,14 +681,14 @@ function SettingsPanel({ auth, onProfileUpdated }) {
 
   return <View>
     <View style={styles.placeholderCard}><Text style={styles.sectionTitle}>Profile</Text><View style={{ alignItems: "center", marginBottom: 14 }}>{profilePicture ? <Image source={{ uri: profilePicture }} style={{ width: 76, height: 76, borderRadius: 38 }} /> : <View style={{ alignItems: "center", justifyContent: "center", width: 76, height: 76, borderRadius: 38, backgroundColor: "#dff2e9" }}><Text style={{ color: "#087b82", fontSize: 22, fontWeight: "800" }}>{(name || "S").slice(0, 2).toUpperCase()}</Text></View>}<Pressable onPress={chooseProfilePicture} style={{ marginTop: 8 }}><Text style={styles.refreshText}>{profilePicture ? "Change profile picture" : "Add profile picture"}</Text></Pressable></View><Text style={styles.label}>Name</Text><TextInput value={name} onChangeText={setName} style={styles.input} /><Text style={styles.label}>Email</Text><TextInput autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} style={styles.input} />{error ? <Text style={styles.error}>{error}</Text> : null}{message ? <Text style={styles.successText}>{message}</Text> : null}<View style={styles.focusActions}><Button disabled={busy} title={busy ? "Saving..." : "Save profile"} onPress={saveProfile} /></View></View>
-    <View style={styles.placeholderCard}><Text style={styles.sectionTitle}>Notifications</Text><Text style={styles.mutedText}>Local task reminders: {permission}</Text><View style={styles.focusActions}><Button title={permission === "Enabled" ? "Permission enabled" : "Enable notifications"} onPress={requestNotifications} /></View></View>
+    <View style={styles.placeholderCard}><Text style={styles.sectionTitle}>Notifications</Text><Text style={styles.mutedText}>Local task reminders: {notificationsEnabled ? permission : "Disabled"}</Text><View style={styles.focusActions}><Button title={notificationsEnabled ? "Disable notifications" : "Enable notifications"} onPress={toggleNotifications} /></View></View>
     <View style={styles.placeholderCard}><Text style={styles.sectionTitle}>Offline data</Text><Text style={styles.mutedText}>Tasks and notes can be cached locally on this device. Task changes sync when Internet returns; notes remain device-only.</Text><Text style={styles.mutedText}>StudyFlow v1.0.1</Text></View>
   </View>;
 }
 
-function ForgotPasswordScreen({ onBack }) {
+function ForgotPasswordScreen({ onBack, initialEmail = "" }) {
   const [step, setStep] = useState("email");
-  const [email, setEmail] = useState("");
+  const [email] = useState(initialEmail.trim().toLowerCase());
   const [code, setCode] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -682,7 +729,7 @@ function ForgotPasswordScreen({ onBack }) {
     <Text style={[styles.brand, { color: "#123d46" }]}>Reset password</Text>
     <Text style={[styles.subtitle, { color: "#66818a" }]}>{step === "email" ? "We’ll send a 6-digit code to your email." : "Enter the code and choose a new password."}</Text>
     <View style={styles.card}>
-      {step === "email" ? <><Field label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" /><Button disabled={busy} title={busy ? "Sending..." : "Send code"} onPress={requestCode} /></> : <><Field label="Verification code" value={code} onChangeText={(value) => setCode(value.replace(/\D/g, "").slice(0, 6))} keyboardType="numeric" /><Field label="New password" value={newPassword} onChangeText={setNewPassword} secureTextEntry /><Field label="Confirm password" value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry /><Button disabled={busy} title={busy ? "Saving..." : "Set new password"} onPress={resetPassword} /></>}
+      {step === "email" ? <><Text style={styles.mutedText}>A verification code will be sent to:</Text><Text style={{ marginTop: 6, marginBottom: 18, color: "#17362f", fontSize: 16, fontWeight: "800" }}>{email || "No email entered"}</Text><Button disabled={busy || !email} title={busy ? "Sending..." : "Send code"} onPress={requestCode} /></> : <><Field label="Verification code" value={code} onChangeText={(value) => setCode(value.replace(/\D/g, "").slice(0, 6))} keyboardType="numeric" /><Field label="New password" value={newPassword} onChangeText={setNewPassword} secureTextEntry /><Field label="Confirm password" value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry /><Button disabled={busy} title={busy ? "Saving..." : "Set new password"} onPress={resetPassword} /></>}
       {error ? <Text style={styles.error}>{error}</Text> : null}
       {message ? <Text style={styles.successText}>{message}</Text> : null}
       <Pressable onPress={onBack} style={styles.switchButton}><Text style={styles.switchText}>Back to sign in</Text></Pressable>
@@ -699,7 +746,7 @@ function AuthScreen({ mode, setMode, onAuthenticated }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  if (forgot) return <ForgotPasswordScreen onBack={() => { setForgot(false); setError(""); }} />;
+  if (forgot) return <ForgotPasswordScreen initialEmail={email} onBack={() => { setForgot(false); setError(""); }} />;
 
   async function submit() {
     setError("");
@@ -767,6 +814,14 @@ function HomeScreen({ auth, onLogout, onProfileUpdated }) {
   const [editingTask, setEditingTask] = useState(null);
   const [activeView, setActiveView] = useState("home");
   const [profilePicture, setProfilePicture] = useState(null);
+  const [taskFilter, setTaskFilter] = useState("all");
+  const [taskSubjectFilter, setTaskSubjectFilter] = useState("");
+  const [taskSubjects, setTaskSubjects] = useState([]);
+
+  useEffect(() => {
+    if (activeView !== "tasks") return;
+    apiRequest("/subjects", {}, auth.token).then((data) => setTaskSubjects(data.subjects || [])).catch(() => {});
+  }, [activeView, auth.token]);
 
   async function loadTasks() {
     setError("");
@@ -797,7 +852,7 @@ function HomeScreen({ auth, onLogout, onProfileUpdated }) {
     for (const operation of queue) {
       try {
         if (operation.type === "createTask") {
-          const data = await apiRequest("/tasks", { method: "POST", body: JSON.stringify({ title: operation.task.title, priority: operation.task.priority, estimatedMinutes: operation.task.estimatedMinutes, dueDate: operation.task.dueDate, reminderMinutesBefore: operation.task.reminderMinutesBefore }) }, auth.token);
+          const data = await apiRequest("/tasks", { method: "POST", body: JSON.stringify({ title: operation.task.title, priority: operation.task.priority, estimatedMinutes: operation.task.estimatedMinutes, dueDate: operation.task.dueDate, reminderMinutesBefore: operation.task.reminderMinutesBefore, subjectId: operation.task.subjectId || null, goalId: operation.task.goalId || null }) }, auth.token);
           if (operation.task._id && data.task?._id) idMap[operation.task._id] = data.task._id;
           if (operation.task._id) await cancelTaskNotification(operation.task._id);
           await scheduleTaskNotification(data.task).catch(() => {});
@@ -877,17 +932,24 @@ function HomeScreen({ auth, onLogout, onProfileUpdated }) {
   const showTasks = activeView === "tasks";
   const showStructure = activeView === "goals" || activeView === "subjects";
   const showFocus = activeView === "focus";
+  const filteredTasks = tasks.filter((task) => {
+    const matchesStatus = taskFilter === "done" ? task.completed : taskFilter === "left" ? !task.completed : true;
+    const taskSubjectId = typeof task.subjectId === "object" ? task.subjectId?._id : task.subjectId;
+    return matchesStatus && (!taskSubjectFilter || taskSubjectId === taskSubjectFilter);
+  });
 
   return <SafeAreaView style={[styles.screen, { backgroundColor: "#f2f7f6" }]} edges={["top", "left", "right", "bottom"]}>
     <View style={[styles.homeHeader, { display: activeView === "home" ? "none" : "flex", backgroundColor: "#f2f7f6", borderBottomWidth: 0, paddingBottom: 8 }]}><View><Text style={styles.smallEyebrow}>STUDYFLOW</Text><Text style={styles.homeTitle}>{viewTitle}</Text></View><Pressable onPress={onLogout} style={[styles.logoutButton, { backgroundColor: "#ffffff" }]}><Text style={styles.logoutText}>Log out</Text></Pressable></View>
     <ScrollView contentContainerStyle={styles.homeContent}>
       {activeView === "today" ? <><Text style={styles.greeting}>Hi, {auth.user?.name || "student"} 👋</Text><Text style={styles.homeSubtitle}>Let’s make today count.</Text><HomeFocusCard tasks={tasks} onOpenFocus={() => setActiveView("focus")} /><View style={{ marginTop: 20, borderRadius: 18, padding: 17, backgroundColor: "#10a889" }}><View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}><View><Text style={{ color: "#d9fff7", fontSize: 12 }}>Your learning health</Text><Text style={{ marginTop: 4, color: "#fff", fontSize: 24, fontWeight: "800" }}>{tasks.length ? (tasks.filter((task) => task.completed).length / tasks.length * 100).toFixed(0) >= 80 ? "Excellent" : "Keep going" : "Start your first task"}</Text><Text style={{ marginTop: 3, color: "#d9fff7", fontSize: 11 }}>Keep your study streak going</Text></View><Text style={{ color: "#fff", fontSize: 30, fontWeight: "800" }}>{tasks.length ? Math.round((tasks.filter((task) => task.completed).length / tasks.length) * 100) : 0}%</Text></View></View><Text style={[styles.sectionTitle, { marginTop: 22 }]}>Quick actions</Text><View style={{ flexDirection: "row", gap: 9, marginTop: 10 }}><Pressable onPress={() => { setEditingTask(null); setShowForm(true); }} style={{ flex: 1, alignItems: "center", borderRadius: 14, paddingVertical: 13, backgroundColor: "#fff" }}><Text style={{ color: "#087b82", fontSize: 20 }}>＋</Text><Text style={{ marginTop: 3, color: "#123d46", fontSize: 11, fontWeight: "700" }}>Task</Text></Pressable><Pressable onPress={() => setActiveView("focus")} style={{ flex: 1, alignItems: "center", borderRadius: 14, paddingVertical: 13, backgroundColor: "#fff" }}><Text style={{ color: "#5874ca", fontSize: 20 }}>◷</Text><Text style={{ marginTop: 3, color: "#123d46", fontSize: 11, fontWeight: "700" }}>Focus</Text></Pressable><Pressable onPress={() => setActiveView("planner")} style={{ flex: 1, alignItems: "center", borderRadius: 14, paddingVertical: 13, backgroundColor: "#fff" }}><Text style={{ color: "#d88d2c", fontSize: 20 }}>▤</Text><Text style={{ marginTop: 3, color: "#123d46", fontSize: 11, fontWeight: "700" }}>Planner</Text></Pressable><Pressable onPress={() => setActiveView("insights")} style={{ flex: 1, alignItems: "center", borderRadius: 14, paddingVertical: 13, backgroundColor: "#fff" }}><Text style={{ color: "#11a889", fontSize: 20 }}>▥</Text><Text style={{ marginTop: 3, color: "#123d46", fontSize: 11, fontWeight: "700" }}>Insights</Text></Pressable></View></> : null}
       {showTasks ? <><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Your tasks</Text><View style={styles.sectionActions}><Pressable onPress={loadTasks}><Text style={styles.refreshText}>Refresh</Text></Pressable><Pressable onPress={() => { setEditingTask(null); setShowForm(true); }} style={styles.addButton}><Text style={styles.addButtonText}>+ Add</Text></Pressable></View></View>
+        <View style={extraStyles.taskFilters}><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}><Pressable onPress={() => { setTaskFilter("all"); setTaskSubjectFilter(""); }} style={[extraStyles.filterChip, taskFilter === "all" && !taskSubjectFilter && extraStyles.filterChipActive]}><Text style={[extraStyles.filterChipText, taskFilter === "all" && !taskSubjectFilter && extraStyles.filterChipTextActive]}>All</Text></Pressable><Pressable onPress={() => { setTaskFilter("left"); setTaskSubjectFilter(""); }} style={[extraStyles.filterChip, taskFilter === "left" && !taskSubjectFilter && extraStyles.filterChipActive]}><Text style={[extraStyles.filterChipText, taskFilter === "left" && !taskSubjectFilter && extraStyles.filterChipTextActive]}>Left</Text></Pressable><Pressable onPress={() => { setTaskFilter("done"); setTaskSubjectFilter(""); }} style={[extraStyles.filterChip, taskFilter === "done" && !taskSubjectFilter && extraStyles.filterChipActive]}><Text style={[extraStyles.filterChipText, taskFilter === "done" && !taskSubjectFilter && extraStyles.filterChipTextActive]}>Done</Text></Pressable>{taskSubjects.map((subject) => <Pressable key={subject._id} onPress={() => { setTaskFilter("all"); setTaskSubjectFilter(subject._id); }} style={[extraStyles.filterChip, taskSubjectFilter === subject._id && extraStyles.filterChipActive]}><Text style={[extraStyles.filterChipText, taskSubjectFilter === subject._id && extraStyles.filterChipTextActive]}>{subject.name}</Text></Pressable>)}</ScrollView></View>
         {showForm ? <TaskForm task={editingTask} token={auth.token} userId={auth.user?.id || auth.user?._id} onCancel={() => { setShowForm(false); setEditingTask(null); }} onSaved={handleSaved} /> : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
         {loadingTasks ? <View style={styles.taskLoading}><ActivityIndicator color="#11806b" /><Text style={styles.loadingText}>Loading tasks...</Text></View> : null}
         {!loadingTasks && tasks.length === 0 ? <View style={styles.emptyCard}><Text style={styles.emptyTitle}>No tasks yet</Text><Text style={styles.emptyText}>Your tasks will appear here once you create them.</Text></View> : null}
-        {tasks.map((task) => <View key={task._id} style={styles.taskCard}><Pressable onPress={() => toggleTask(task)} style={styles.taskMain}><View style={[styles.checkbox, task.completed && styles.checkboxDone]}>{task.completed ? <Text style={styles.checkmark}>✓</Text> : null}</View><View style={styles.taskCopy}><Text style={[styles.taskTitle, task.completed && styles.taskCompleted]}>{task.title}</Text><Text style={styles.taskMeta}>{task.priority || "medium"}{task.estimatedMinutes ? ` • ${task.estimatedMinutes} min` : ""}{task.dueDate ? ` • Due ${new Date(task.dueDate).toLocaleString()}` : ""}</Text></View></Pressable><View style={styles.taskActions}><Pressable onPress={() => { setEditingTask(task); setShowForm(true); }}><Text style={styles.editText}>Edit</Text></Pressable><Pressable onPress={() => deleteTask(task)}><Text style={styles.deleteText}>Delete</Text></Pressable></View></View>)}</> : null}
+        {filteredTasks.length === 0 && !loadingTasks ? <View style={styles.emptyCard}><Text style={styles.emptyTitle}>No matching tasks</Text><Text style={styles.emptyText}>Try another filter or add a new task.</Text></View> : null}
+        {filteredTasks.map((task) => <View key={task._id} style={styles.taskCard}><Pressable onPress={() => toggleTask(task)} style={styles.taskMain}><View style={[styles.checkbox, task.completed && styles.checkboxDone]}>{task.completed ? <Text style={styles.checkmark}>✓</Text> : null}</View><View style={styles.taskCopy}><Text numberOfLines={1} style={[styles.taskTitle, task.completed && styles.taskCompleted]}>{task.title}</Text><Text style={styles.taskMeta}>{task.priority || "medium"}{task.estimatedMinutes ? ` • ${task.estimatedMinutes} min` : ""}{task.dueDate ? ` • Due ${new Date(task.dueDate).toLocaleString()}` : ""}</Text></View></Pressable><View style={styles.taskActions}><Pressable onPress={() => { setEditingTask(task); setShowForm(true); }}><Text style={styles.editText}>Edit</Text></Pressable><Pressable onPress={() => deleteTask(task)}><Text style={styles.deleteText}>Delete</Text></Pressable></View></View>)}</> : null}
       {activeView === "today" ? <><View style={{ marginTop: 22, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}><Text style={styles.sectionTitle}>Upcoming</Text><Pressable onPress={() => setActiveView("planner")}><Text style={styles.refreshText}>View all</Text></Pressable></View>{tasks.filter((task) => !task.completed && task.dueDate).sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate)).slice(0, 2).map((task) => <View key={"upcoming-" + task._id} style={{ marginTop: 10, borderRadius: 16, padding: 15, backgroundColor: "#e9e1ff", borderLeftWidth: 4, borderLeftColor: "#9b7ee8" }}><Text style={{ color: "#2d3150", fontSize: 14, fontWeight: "800" }}>{task.title}</Text><Text style={{ marginTop: 5, color: "#6f658b", fontSize: 11 }}>{new Date(task.dueDate).toLocaleString()} · {task.estimatedMinutes || 0} min</Text></View>)}<View style={{ marginTop: 22 }}><Text style={styles.sectionTitle}>This week</Text><View style={{ flexDirection: "row", gap: 9, marginTop: 10 }}><View style={{ flex: 1, alignItems: "center", borderRadius: 14, paddingVertical: 13, backgroundColor: "#fff" }}><Text style={{ color: "#8d70d8", fontSize: 20, fontWeight: "800" }}>{tasks.reduce((total, task) => total + (Number(task.estimatedMinutes) || 0), 0)}m</Text><Text style={{ marginTop: 3, color: "#6d7c76", fontSize: 10 }}>Planned time</Text></View><View style={{ flex: 1, alignItems: "center", borderRadius: 14, paddingVertical: 13, backgroundColor: "#fff" }}><Text style={{ color: "#11a889", fontSize: 20, fontWeight: "800" }}>{tasks.filter((task) => task.completed).length}</Text><Text style={{ marginTop: 3, color: "#6d7c76", fontSize: 10 }}>Tasks done</Text></View><View style={{ flex: 1, alignItems: "center", borderRadius: 14, paddingVertical: 13, backgroundColor: "#fff" }}><Text style={{ color: "#3e77c5", fontSize: 20, fontWeight: "800" }}>{tasks.filter((task) => task.dueDate).length}</Text><Text style={{ marginTop: 3, color: "#6d7c76", fontSize: 10 }}>Scheduled</Text></View></View></View></> : null}
       {activeView === "today" ? <View style={{ marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{[["Today", "today-detail"], ["Task", "tasks"], ["Planner", "planner"], ["Goals", "goals"], ["Subjects", "subjects"], ["Focus", "focus"], ["Insights", "insights"]].map(([label, target]) => <Pressable key={label} onPress={() => setActiveView(target)} style={{ width: "23%", alignItems: "center", borderRadius: 13, paddingVertical: 11, backgroundColor: "#fff" }}><Text style={{ color: "#087b82", fontSize: 17 }}>◉</Text><Text style={{ marginTop: 3, color: "#123d46", fontSize: 9, fontWeight: "700" }}>{label}</Text></Pressable>)}</View> : null}
       {activeView === "home" ? <HomeDashboard auth={auth} tasks={tasks} profilePicture={profilePicture} onEditProfilePicture={chooseHomeProfilePicture} onNavigate={setActiveView} onAddTask={() => { setEditingTask(null); setActiveView("tasks"); setShowForm(true); }} /> : null}
@@ -917,6 +979,8 @@ export default function App() {
       try {
         const token = await AsyncStorage.getItem(TOKEN_KEY);
         if (!token) return;
+        // Returning users skip the JS splash entirely; the approved splash is for first launch only.
+        setShowLaunch(false);
         const cachedUser = JSON.parse((await AsyncStorage.getItem(USER_KEY)) || "null");
         try {
           const data = await apiRequest("/auth/me", {}, token);
@@ -942,7 +1006,7 @@ export default function App() {
     setMode("login");
   }
 
-  if (loading) return <View style={styles.loading}><ActivityIndicator color="#11806b" size="large" /><Text style={styles.loadingText}>Loading StudyFlow...</Text></View>;
+  if (loading) return showLaunch ? <LaunchScreen returningUser={false} onContinue={() => {}} /> : <View style={styles.loading} />;
   return <SafeAreaProvider><View style={styles.flex}>{showLaunch ? <LaunchScreen returningUser={Boolean(auth)} onContinue={() => setShowLaunch(false)} /> : <><StatusBar style={auth ? "dark" : "light"} />{auth ? <HomeScreen auth={auth} onLogout={logout} onProfileUpdated={(user) => setAuth((current) => ({ ...current, user }))} /> : <AuthScreen mode={mode} setMode={setMode} onAuthenticated={setAuth} />}</>}</View></SafeAreaProvider>;
 }
 
